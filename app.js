@@ -1,4 +1,4 @@
-import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js';
+import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=11';
 
 /* ============ config ============ */
 const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';
@@ -353,7 +353,7 @@ function tabSound(){
   return `<div class="center" style="margin:6px 0 14px"><div class="kicker">Soundboard</div>
     <p class="muted" style="margin:6px 0 0;font-size:14px">Koppel je telefoon aan de boombox en tik.</p></div>
     <div class="sb">${SOUNDS.map(([id,label,text])=>`<button class="sbb ${snd.id===id?'playing':''}" data-sound="${id}">
-      <span class="sbl">${esc(label)}</span><span class="sbt">${esc(text)}</span></button>`).join('')}</div>`;
+      <span class="sbl">${esc(label)}</span></button>`).join('')}</div>`;
 }
 function playSound(id){
   const mark = () => document.querySelectorAll('.sbb').forEach(b=>b.classList.toggle('playing', b.dataset.sound===snd.id));

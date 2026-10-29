@@ -72,7 +72,7 @@ export const SOUNDS = [
   ['rick', 'Rick', 'Jammer dat je op mannen valt, knapperd'],
   ['niels', 'Niels', 'Hmm, lekker beertje van me'],
   ['gadoor', 'Ga door', 'Oh ja, ga alsjeblieft door'],
-  ['hottub', 'Hottub', 'Zullen we lekker badderen?'],
+  ['hottub', 'Eend', 'Zullen we lekker badderen?'],
   ['bal', 'Bal', 'Oh ja, sla maar raak'],
   ['gas', 'Gas', 'Ja, gas op die lolly!'],
   ['harder', 'Harder', 'Harder, ja harder, ja harder!'],
