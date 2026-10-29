@@ -55,6 +55,7 @@ export const LIVE = {
 
 // Challenges: de quizmaster zet ze open en vult de top 3 in (3, 2 en 1 punt)
 export const CHALLENGES = [
+  'Wie heeft als eerste de tikkie betaald?',
   'Wie heeft de meeste smaken goed geraden bij de wijnproeverij?',
   'Wie wint karten heat 1?',
   'Wie wint karten heat 2?',
