@@ -227,10 +227,10 @@ function activeCard(q){
 function preEditor(q){
   const key = q.id+':pred', mine = myAnswer(q,'pred');
   const list = pre(), idx = list.indexOf(q);
-  const nav = `<div class="row between" style="margin-top:12px">
-    <button class="btn small ghost" data-open="${list[idx-1]?.id ?? ''}" ${idx>0?'':'disabled'}>‹ Vorige</button>
-    <button class="btn small ghost" data-open="">Overzicht</button>
-    <button class="btn small ghost" data-open="${list[idx+1]?.id ?? ''}" ${idx<list.length-1?'':'disabled'}>Volgende ›</button></div>`;
+  const nav = `<div class="qnav">
+    <button class="qn prev" data-open="${list[idx-1]?.id ?? ''}" ${idx>0?'':'disabled'}><span class="ar">‹</span>Vorige</button>
+    <button class="qn mid" data-open="">Overzicht</button>
+    <button class="qn next" data-open="${list[idx+1]?.id ?? ''}" ${idx<list.length-1?'':'disabled'}>Volgende<span class="ar">›</span></button></div>`;
   if(mine && !ui.editing[key]) return `<div class="card"><div class="kicker">Vraag ${dnr(q)} van ${list.length} · ingevuld</div><h2>${esc(q.title)}</h2>
     ${order(mine.picks)}<button class="btn ghost" style="margin-top:10px" data-edit="${key}">Aanpassen</button>${nav}</div>`;
   return `<div class="card"><div class="kicker">Vraag ${dnr(q)} van ${list.length}</div><h2>${esc(q.title)}</h2>
