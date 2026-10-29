@@ -78,7 +78,7 @@ async function supaDb(){
 
 /* ============ state ============ */
 let db, S = null, loadErr = null, lastSig = '';
-const ui = { tab:null, picks:{}, editing:{}, openQ:null, truthFor:null, newLive:null, newRanker:null, customTitle:'', arm:null, busy:false, codeErr:false };
+const ui = { tab:null, atab:null, openPlayer:null, picks:{}, editing:{}, openQ:null, truthFor:null, newLive:null, newRanker:null, customTitle:'', arm:null, busy:false, codeErr:false };
 const AS = MOCK ? params.get('as') : null;   // alleen voor testen
 if(AS) ls.set('helden_code', GAME_CODE);
 const me = () => AS || ls.get('helden_me');
@@ -358,32 +358,45 @@ function viewPlayer(){
 }
 
 /* ============ scherm: quizmaster ============ */
-function viewAdmin(){
-  if(!isAdmin()) return header() + `<div class="card">Alleen de quizmaster heeft toegang.</div>`;
+const ATABS = [['events','Events','event'],['ranking','Ranking','ranking'],['challenges','Challenges','challenges'],['deelnemers','Deelnemers','people']];
+ICON.people = '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19.5c.6-3.3 3-5.2 6-5.2s5.4 1.9 6 5.2"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14.2c2.3.2 4 1.8 4.5 4.6"/></svg>';
+
+function adminDefaultTab(){
+  const a = active();
+  if(a) return a.kind==='pre' ? 'events' : 'ranking';
+  return predOpen() ? 'deelnemers' : 'events';
+}
+function adminTabBar(cur){
+  const a = active(), dot = {};
+  if(a && a.status==='voting') dot.events = true;
+  if(a && a.status==='open') dot.ranking = true;
+  if(challenges().some(q=>q.status==='open')) dot.challenges = true;
+  return `<nav class="tabbar four">${ATABS.map(([id,label,ic])=>
+    `<button class="tab ${cur===id?'on':''}" data-atab="${id}" aria-label="${label}"><span class="ic">${ICON[ic]}${dot[id]?'<i class="ping"></i>':''}</span><span class="lb">${label}</span></button>`).join('')}</nav>`;
+}
+
+function activeAdminCard(a){
+  const who = id => a.status==='voting' ? answers(a,'vote').some(x=>x.player_id===id)
+    : id===a.ranker_id ? answers(a,'vote').some(x=>x.player_id===id) : answers(a,'pred').some(x=>x.player_id===id);
+  const ready = a.status==='voting' ? answers(a,'vote').length>0 : answers(a,'vote').some(x=>x.player_id===a.ranker_id);
+  return `<div class="card"><div class="kicker">Loopt nu · ${qLabel(a)}${a.status==='voting'?' · stemming':''}</div><h2>${esc(a.title)}</h2>
+    ${a.secret?`<div class="secret">${esc(a.secret)}</div>`:''}
+    ${a.ranker_id?`<p class="muted">Rangschikker: <b>${esc(P(a.ranker_id).name)}</b></p>`:''}
+    <div class="chips" style="margin:10px 0 14px">${S.players.map(p=>`<span class="chip ${who(p.id)?'on':''}">${esc(p.name)}${p.id===a.ranker_id?' ★':''}${who(p.id)?' ✓':''}</span>`).join('')}</div>
+    ${!ready ? `<p class="muted">${a.status==='voting'?'Nog geen stemmen.':`Wachten tot ${esc(P(a.ranker_id).name)} heeft gerangschikt.`}</p>`:''}
+    <button class="btn gold" data-reveal="${a.id}" ${ready?'':'disabled'}>Onthullen</button>
+    <button class="btn ghost danger" style="margin-top:8px" data-cancel="${a.id}">${ui.arm==='c'+a.id?'Zeker? Tik nog een keer':'Annuleren'}</button></div>`;
+}
+// melding als er op een ander tabblad iets loopt
+const busyElsewhere = (a, tab) => `<div class="card center" style="padding:12px"><p class="muted" style="margin:0 0 8px">Er loopt nog ${a.kind==='pre'?'een stemming bij Events':'een ranking-ronde'}. Rond die eerst af.</p>
+  <button class="btn small" style="width:100%" data-atab="${tab}">Naar ${a.kind==='pre'?'Events':'Ranking'}</button></div>`;
+
+function adminEvents(){
   const a = active(), open = predOpen();
-  let html = header() + `<div class="center"><div class="kicker">Quizmaster</div></div>`;
-
-  // actieve ronde
-  if(a){
-    const kind = a.status==='voting' ? 'vote' : 'pred';
-    const who = id => a.status==='voting' ? answers(a,'vote').some(x=>x.player_id===id)
-      : id===a.ranker_id ? answers(a,'vote').some(x=>x.player_id===id) : answers(a,'pred').some(x=>x.player_id===id);
-    const ready = a.status==='voting' ? answers(a,'vote').length>0 : answers(a,'vote').some(x=>x.player_id===a.ranker_id);
-    html += `<div class="card"><div class="kicker">Loopt nu · ${qLabel(a)}${a.status==='voting'?' · stemming':''}</div><h2>${esc(a.title)}</h2>
-      ${a.secret?`<div class="secret">${esc(a.secret)}</div>`:''}
-      ${a.ranker_id?`<p class="muted">Rangschikker: <b>${esc(P(a.ranker_id).name)}</b></p>`:''}
-      <div class="chips" style="margin:10px 0 14px">${S.players.map(p=>`<span class="chip ${who(p.id)?'on':''}">${esc(p.name)}${p.id===a.ranker_id?' ★':''}${who(p.id)?' ✓':''}</span>`).join('')}</div>
-      ${!ready ? `<p class="muted">${a.status==='voting'?'Nog geen stemmen.':`Wachten tot ${esc(P(a.ranker_id).name)} heeft gerangschikt.`}</p>`:''}
-      <button class="btn gold" data-reveal="${a.id}" ${ready?'':'disabled'}>Onthullen</button>
-      <button class="btn ghost danger" style="margin-top:8px" data-cancel="${a.id}">${ui.arm==='c'+a.id?'Zeker? Tik nog een keer':'Annuleren'}</button></div>`;
-  }
-
-  // voortgang voorspellingen
-  html += `<div class="card"><div class="kicker">Voorspellingen ${open?`· sluiten over ${countdown()}`:'· gesloten'}</div>
-    <div class="chips" style="margin-top:10px">${S.players.map(p=>`<span class="chip ${progress(p.id)===pre().length?'on':''}">${esc(p.name)} ${progress(p.id)}/${pre().length}</span>`).join('')}</div></div>`;
-
-  // vooraf-vragen
-  html += `<div class="card"><div class="kicker">Vooraf-vragen</div>${open?'<p class="muted" style="font-size:14px">Onthullen kan vanaf vrijdag 17:00.</p>':''}` + pre().map(q=>{
+  let html = '';
+  if(a && a.kind==='pre') html += activeAdminCard(a);
+  else if(a) html += busyElsewhere(a,'ranking');
+  html += `<div class="card"><div class="kicker">Event-vragen · uitslagen</div>${open?`<p class="muted" style="font-size:14px">Onthullen kan vanaf vrijdag 17:00 (nog ${countdown()}).</p>`:''}` + pre().map(q=>{
     let ctl = '';
     if(q.status==='revealed') ctl = `<button class="btn small ghost" data-undo="${q.id}">${ui.arm==='u'+q.id?'Zeker? Tik nog een keer':'Onthulling terugdraaien'}</button>`;
     else if(q.status==='closed' && q.mode==='gemeten'){
@@ -392,26 +405,20 @@ function viewAdmin(){
       else ctl = `<button class="btn small" data-truthopen="${q.id}" ${open||a?'disabled':''}>Uitslag invullen</button>`;
     } else if(q.status==='closed') ctl = `<button class="btn small" data-vote="${q.id}" ${open||a?'disabled':''}>Start stemming</button>`;
     const st = q.status==='revealed' ? 'onthuld' : q.status==='voting' ? 'stemming loopt' : fmtAt(q.push_at);
-    return `<div class="adm"><div><b>${dnr(q)}.</b> ${esc(q.title)}</div>
+    return `<div class="adm ${q.status==='revealed'?'isdone':''}"><div><b>${dnr(q)}.</b> ${esc(q.title)}</div>
       <div class="meta">${esc(q.secret)} · ${q.mode==='gemeten'?'jij vult in':'groep stemt'} · ${st}</div>${ctl}</div>`;
   }).join('') + `</div>`;
+  return html;
+}
 
-  // challenges
-  html += `<div class="card"><div class="kicker">Challenges · 3, 2 en 1 punt</div>` + challenges().map(q=>{
-    let ctl;
-    if(q.status==='closed') ctl = `<button class="btn small" data-chopen="${q.id}">Openzetten</button>`;
-    else if(q.status==='open'){
-      if(ui.truthFor===q.id){ const k='ch'+q.id, n=(ui.picks[k]||[]).length;
-        ctl = picker(k,'Tik de top 3 op volgorde: winnaar eerst.') + `<button class="btn gold" style="margin-top:10px" data-chsave="${q.id}" ${n>=3?'':'disabled'}>Uitslag opslaan</button>`; }
-      else ctl = `<div class="row"><button class="btn small" data-truthopen="${q.id}">Uitslag invullen</button><button class="btn small ghost" data-chhide="${q.id}">Weer verbergen</button></div>`;
-    } else ctl = `<button class="btn small ghost" data-undo="${q.id}">${ui.arm==='u'+q.id?'Zeker? Tik nog een keer':'Uitslag terugdraaien'}</button>`;
-    const st = q.status==='closed' ? 'verborgen' : q.status==='open' ? 'open, wacht op uitslag' : 'uitslag: ' + q.truth.slice(0,3).map(id=>P(id).name).join(', ');
-    return `<div class="adm"><div><b>${q.nr}.</b> ${esc(q.title)}</div><div class="meta">${st}</div>${ctl}</div>`;
-  }).join('') + `</div>`;
-
-  // live-rondes
+function adminRanking(){
+  const a = active();
+  let html = '';
+  if(a && a.kind==='live') html += activeAdminCard(a);
+  else if(a) html += busyElsewhere(a,'events');
   const cats = [...new Set(live().map(q=>q.cat))];
-  html += `<div class="card"><div class="kicker">Live-rondes</div><h2 style="margin-top:6px">1. Kies een vraag</h2>` +
+  const played = live().filter(q=>q.status==='revealed').length;
+  html += `<div class="card"><div class="kicker">Ranking-vragen · ${played} gespeeld</div><h2 style="margin-top:6px">1. Kies een vraag</h2>` +
     cats.map(c=>`<div class="kicker" style="margin:14px 0 8px">${esc(c)}</div><div class="chips">${live().filter(q=>q.cat===c).map(q=>
       `<button class="chip ${ui.newLive===q.id?'on':''} ${q.status==='revealed'?'done':''}" data-live="${q.id}" ${q.status!=='closed'?'disabled':''}>${esc(q.title)}</button>`).join('')}</div>`).join('') +
     `<div style="margin-top:14px"><input type="text" id="custom" placeholder="Of typ een eigen vraag" value="${esc(ui.customTitle)}"></div>
@@ -419,11 +426,46 @@ function viewAdmin(){
      <h2 style="margin-top:22px">2. Wie rangschikt?</h2><div class="chips">${S.players.map(p=>
       `<button class="chip ${ui.newRanker===p.id?'on':''}" data-ranker="${p.id}">${esc(p.name)}</button>`).join('')}
       <button class="chip ${ui.newRanker==='_random'?'on':''}" data-ranker="_random">Willekeurig</button></div>
-     <button class="btn gold" style="margin-top:16px" data-act="startlive" ${!a && ui.newLive && ui.newRanker?'':'disabled'}>${a?'Eerst lopende ronde afronden':'Start live-ronde'}</button></div>`;
+     <button class="btn gold" style="margin-top:16px" data-act="startlive" ${!a && ui.newLive && ui.newRanker?'':'disabled'}>${a?'Eerst lopende ronde afronden':'Zet live'}</button></div>`;
+  return html;
+}
 
-  html += `<div class="card"><div class="kicker" style="margin-bottom:6px">Stand</div>${scoreboard()}</div>
+function adminChallenges(){
+  return `<div class="card"><div class="kicker">Challenges · 3, 2 en 1 punt</div>` + challenges().map(q=>{
+    let ctl;
+    if(q.status==='closed') ctl = `<button class="btn small" data-chopen="${q.id}">Openzetten</button>`;
+    else if(q.status==='open'){
+      if(ui.truthFor===q.id){ const k='ch'+q.id, n=(ui.picks[k]||[]).length;
+        ctl = picker(k,'Tik de top 3 op volgorde: winnaar eerst.') + `<button class="btn gold" style="margin-top:10px" data-chsave="${q.id}" ${n>=3?'':'disabled'}>Uitslag opslaan</button>`; }
+      else ctl = `<div class="row"><button class="btn small" data-truthopen="${q.id}">Uitslag invullen</button><button class="btn small ghost" data-chhide="${q.id}">Weer verbergen</button></div>`;
+    } else ctl = `<button class="btn small ghost" data-undo="${q.id}">${ui.arm==='u'+q.id?'Zeker? Tik nog een keer':'Uitslag terugdraaien'}</button>`;
+    const st = q.status==='closed' ? 'verborgen voor deelnemers' : q.status==='open' ? 'open, wacht op uitslag' : 'uitslag: ' + q.truth.slice(0,3).map(id=>P(id).name).join(', ');
+    return `<div class="adm ${q.status==='revealed'?'isdone':''}"><div><b>${q.nr}.</b> ${esc(q.title)}</div><div class="meta">${st}</div>${ctl}</div>`;
+  }).join('') + `</div>`;
+}
+
+function adminDeelnemers(){
+  const tot = pre().length, done = S.players.filter(p=>progress(p.id)===tot).length, open = predOpen();
+  let html = `<div class="card center"><div class="kicker">Event-vragen ingevuld</div><div class="cnt">${done} / ${S.players.length}</div>
+    <p class="muted" style="margin:6px 0 0">${open ? `Deadline vrijdag 17:00, nog ${countdown()}.` : 'De voorspellingen zijn gesloten.'}</p></div>`;
+  html += S.players.map(p=>{
+    const n = progress(p.id), missing = pre().filter(q=>!S.answers.some(x=>x.question_id===q.id && x.kind==='pred' && x.player_id===p.id));
+    const isOpen = ui.openPlayer===p.id;
+    return `<button class="prow ${n===tot?'full':''}" data-player="${p.id}">
+        <span class="pn">${esc(p.name)}</span><span class="pc">${n===tot?'✓ compleet':`${n} / ${tot}`}</span>
+        <span class="bar"><i style="width:${Math.round(n/tot*100)}%"></i></span></button>
+      ${isOpen && missing.length ? `<div class="pmiss"><div class="kicker" style="margin-bottom:6px">Nog niet ingevuld</div>${missing.map(q=>`<div>${dnr(q)}. ${esc(q.title)}</div>`).join('')}</div>` : ''}`;
+  }).join('');
+  html += `<div class="card" style="margin-top:18px"><div class="kicker" style="margin-bottom:6px">Stand</div>${scoreboard()}</div>
     <p class="center"><a href="#tv" class="muted">Tv-scherm openen</a></p>`;
   return html;
+}
+
+function viewAdmin(){
+  if(!isAdmin()) return header() + `<div class="card">Alleen de quizmaster heeft toegang.</div>`;
+  const tab = ui.atab || adminDefaultTab();
+  const body = tab==='events' ? adminEvents() : tab==='ranking' ? adminRanking() : tab==='challenges' ? adminChallenges() : adminDeelnemers();
+  return header() + `<div class="center"><div class="kicker">Quizmaster</div></div>` + body + adminTabBar(tab);
 }
 
 /* ============ scherm: tv ============ */
@@ -481,7 +523,7 @@ function arm(tag){ if(ui.arm===tag){ ui.arm=null; return true } ui.arm=tag; rend
 document.addEventListener('input', e => { if(e.target.id==='custom'){ ui.customTitle = e.target.value; render() } });
 document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='code') document.querySelector('[data-act=code]')?.click() });
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab],[data-chopen],[data-chhide],[data-chsave]');
+  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab],[data-chopen],[data-chhide],[data-chsave],[data-atab],[data-player]');
   if(!t || t.disabled) return;
   const d = t.dataset;
   if(d.act) e.preventDefault();
@@ -494,6 +536,8 @@ document.addEventListener('click', e => {
   if(d.act==='logout'){ ls.del('helden_me'); location.hash=''; return render(true) }
   if(d.me){ ls.set('helden_me', d.me); return render(true) }
   if(d.tab){ ui.tab = d.tab; ui.openQ = null; window.scrollTo(0,0); return render() }
+  if(d.atab){ ui.atab = d.atab; ui.truthFor = null; window.scrollTo(0,0); return render() }
+  if(d.player){ ui.openPlayer = ui.openPlayer===d.player ? null : d.player; return render() }
   if(d.pick){
     const k = d.pick, arr = [...(ui.picks[k]||[])], i = arr.indexOf(d.id);
     if(i>=0) arr.splice(i,1); else arr.push(d.id);

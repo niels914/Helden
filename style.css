@@ -168,3 +168,13 @@ body.tv #bg::before{opacity:.24}
 @media (prefers-reduced-motion:reduce){#bg::before{animation:none}#bg{transition:none}}
 /* stand-knop met damp */
 .tab.mid .ic{background:url(tab_vapor.jpg) center/cover;box-shadow:inset 0 0 0 60px rgba(0,0,0,.5),0 0 22px rgba(80,200,90,.12);color:var(--text)}
+/* ---------- quizmaster ---------- */
+.tabbar.four{grid-template-columns:repeat(4,1fr)}
+.adm.isdone{opacity:.55}
+.prow{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;width:100%;text-align:left;padding:14px;margin-bottom:8px;
+  border:1px solid var(--line);border-radius:3px;background:var(--card);color:var(--text);cursor:pointer;font:500 15px Inter,sans-serif}
+.prow .pn{font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.prow .pc{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.prow .bar{grid-column:1/-1;margin:2px 0 0}
+.prow.full{border-color:rgba(240,236,228,.45)} .prow.full .pc{color:var(--text)}
+.pmiss{margin:-4px 0 10px;padding:12px 14px;border:1px dashed var(--line);border-radius:3px;font-size:14px;color:var(--muted);line-height:1.6}
