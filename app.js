@@ -188,7 +188,8 @@ function resultCard(q){
 /* ============ schermen: speler ============ */
 function viewLogin(){
   if(ls.get('helden_code') !== GAME_CODE){
-    return `<div style="margin-top:14vh" class="center">
+    return `<div style="margin-top:4vh" class="center">
+      <img class="logo" src="de_held.jpg" alt="De Held">
       <div class="kicker">Het Heldenweekend 2026</div><h1>Ranking de Helden</h1>
       <p class="muted" style="margin-top:18px">Vul de code in.</p>
       <div class="stack" style="margin-top:20px">
@@ -197,7 +198,7 @@ function viewLogin(){
         <button class="btn gold" data-act="code">Verder</button>
       </div></div>`;
   }
-  return `<div style="margin-top:8vh" class="center"><div class="kicker">Wie ben jij?</div><h1>Kies je naam</h1></div>
+  return `<div style="margin-top:2vh" class="center"><img class="logo small" src="de_held.jpg" alt="De Held"><div class="kicker">Wie ben jij?</div><h1>Kies je naam</h1></div>
     <div class="stack" style="margin-top:20px">${S.players.map(p=>`<button class="btn" data-me="${p.id}">${esc(p.name)}</button>`).join('')}</div>`;
 }
 const header = () => `<div class="toplinks"><span class="me">${esc(P(me()).name)}</span>
@@ -327,7 +328,7 @@ function tabStand(){
   const lead = st[0];
   let html = `<div class="center" style="margin:6px 0 2px"><div class="kicker">Leaderboard</div></div>
     <div class="card">${st.map((s,i)=>`<div class="score ${s.p.id===me()?'mine':''}"><span class="pos">${i+1}</span><span>${esc(s.p.name)}${s.p.id===me()?' <span class="tag">jij</span>':''}</span><span class="pts">${s.pts}</span></div>`).join('')}</div>`;
-  if(lead && lead.pts>0) html += `<p class="center muted" style="margin:0 0 6px">Huidige Held: <b style="color:var(--text)">${esc(lead.p.name)}</b></p>`;
+  if(lead && lead.pts>0) html += `<div class="heldnow"><img src="de_held.jpg" alt=""><div><div class="kicker">Huidige Held</div><div class="hn">${esc(lead.p.name)}</div></div></div>`;
   if(last) html += `<div class="kicker" style="margin:20px 0 8px">Laatst onthuld</div><div class="card">${resultCard(last)}</div>`;
   else html += `<p class="center muted" style="margin-top:18px">Nog niets onthuld. ${predOpen()?'Eerst voorspellen.':'De eerste onthulling komt eraan.'}</p>`;
   return html;
@@ -437,7 +438,7 @@ function viewTv(){
       <div class="tvgrid">${S.players.map(p=>`<div class="tvp ${who(p.id)?'in':''} ${p.id===a.ranker_id?'ranker':''}">${esc(p.name)}
         <div class="st">${who(p.id)?'klaar':'denkt na…'}</div></div>`).join('')}</div>`;
   } else if(predOpen()){
-    main = `<div class="kicker">Het Heldenweekend 2026</div><h1 class="tvtitle">Ranking de Helden</h1>
+    main = `<div class="tvhero"><img class="tvlogo" src="de_held.jpg" alt="De Held"><div><div class="kicker">Het Heldenweekend 2026</div><h1>Ranking de Helden</h1></div></div>
       <div class="kicker" style="margin-top:4vh">Voorspellingen sluiten over</div><div class="cnt">${countdown()}</div>
       <div class="tvgrid">${S.players.map(p=>`<div class="tvp ${progress(p.id)===pre().length?'in':''}">${esc(p.name)}<div class="st">${progress(p.id)} / ${pre().length}</div></div>`).join('')}</div>`;
   } else if(last && last.kind==='challenge'){
@@ -451,7 +452,7 @@ function viewTv(){
       ${order(last.truth,'tvorder',0.9)}
       <div class="winner" style="animation-delay:${(n*0.9+2.2).toFixed(1)}s">${best.length?`Beste voorspelling: <b>${best.join(' & ')}</b> (+${BONUS})`:'Niemand had er iets van goed.'}</div>`;
   } else {
-    main = `<div class="kicker">Het Heldenweekend 2026</div><h1 class="tvtitle">Ranking de Helden</h1><p class="sub pulse">Wie wordt de Held?</p>`;
+    main = `<div class="tvhero big"><img class="tvlogo" src="de_held.jpg" alt="De Held"><div><div class="kicker">Het Heldenweekend 2026</div><h1>Ranking de Helden</h1><p class="sub pulse">Wie wordt de Held?</p></div></div>`;
   }
   return `<div class="tv tvwrap"><div>${main}</div><div class="tvside card"><h2>Stand</h2>${scoreboard()}</div></div>`;
 }

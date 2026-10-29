@@ -144,3 +144,16 @@ body.tv #app{max-width:none;padding:4vh 4vw;min-height:100dvh}
 .chal.live{border-color:rgba(240,236,228,.6);box-shadow:0 0 24px rgba(240,236,228,.1)}
 .chal.live .ct{text-shadow:var(--glow)}
 .chal.done .order{margin-top:8px}
+/* ---------- logo De Held ---------- */
+.logo{display:block;width:min(78vw,340px);aspect-ratio:1;margin:0 auto -10px;object-fit:cover;
+  -webkit-mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%);mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%)}
+.logo.small{width:min(46vw,190px);margin-bottom:-6px}
+.tvhero{display:flex;align-items:center;gap:2vw}
+.tvhero h1{font-size:clamp(26px,3.4vw,58px)!important;margin:.6vh 0!important}
+.tvlogo{width:min(34vh,26vw);aspect-ratio:1;object-fit:cover;flex:none;
+  -webkit-mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%);mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%)}
+.tvhero.big{flex-direction:column;align-items:flex-start;gap:0}
+.tvhero.big .tvlogo{width:min(62vh,40vw);margin:-4vh 0 -3vh -1vw}
+.heldnow{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:3px;padding:10px 14px 10px 6px;margin:0 0 6px;background:var(--card)}
+.heldnow img{width:76px;height:76px;object-fit:cover;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%);mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%)}
+.heldnow .hn{font:700 24px "Playfair Display",Georgia,serif;text-transform:uppercase;letter-spacing:.08em;text-shadow:var(--glow)}
