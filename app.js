@@ -1,4 +1,4 @@
-import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=13';
+import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=14';
 
 /* ============ config ============ */
 const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';
@@ -6,7 +6,6 @@ const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const GAME_CODE = 'HELDEN';
 const ADMINS = ['niels'];                                   // de quizmaster
 const DEADLINE = Date.parse('2026-11-06T17:00:00+01:00');   // voorspellingen sluiten bij aankomst
-const BONUS = 2;
 const params = new URLSearchParams(location.search);
 const MOCK = params.has('mock');
 const NOWOFF = MOCK && params.get('now') ? Date.parse(params.get('now')) - Date.now() : 0;
@@ -123,14 +122,15 @@ function groupTruth(q){
 function scoreQ(q){
   const out = {};
   if(q.status!=='revealed' || !q.truth) return out;
-  if(q.kind==='challenge'){ q.truth.slice(0,3).forEach((pid,i)=>{ out[pid] = {exact:0, bonus:0, total:CH_PTS[i]} }); return out }
+  if(q.kind==='challenge'){ q.truth.slice(0,3).forEach((pid,i)=>{ out[pid] = {total:CH_PTS[i]} }); return out }
+  // 1 punt voor de juiste nummer 1, 1 voor je eigen plek, 1 voor de juiste laatste
   for(const a of answers(q,'pred')){
     if(a.player_id === q.ranker_id) continue;
-    out[a.player_id] = { exact: a.picks.filter((p,i)=>q.truth[i]===p).length, bonus:0 };
+    const L = q.truth.length - 1, own = a.picks.indexOf(a.player_id);
+    const o = { top: +(a.picks[0] === q.truth[0]), own: +(own >= 0 && q.truth[own] === a.player_id), last: +(a.picks[L] === q.truth[L]) };
+    o.total = o.top + o.own + o.last;
+    out[a.player_id] = o;
   }
-  const max = Math.max(0, ...Object.values(out).map(o=>o.exact));
-  if(max > 0) for(const o of Object.values(out)) if(o.exact === max) o.bonus = BONUS;
-  for(const o of Object.values(out)) o.total = o.exact + o.bonus;
   return out;
 }
 function standings(){
@@ -160,9 +160,13 @@ const full = key => (ui.picks[key]||[]).length === S.players.length;
 function order(list, cls='', delayStep=0){
   return `<ol class="order ${cls}">${list.map((id,i)=>`<li style="animation-delay:${((list.length-1-i)*delayStep + (delayStep?1.6:0)).toFixed(2)}s"><span class="n">${i+1}</span>${esc(P(id).name)}</li>`).join('')}</ol>`;
 }
-function myOrderVsTruth(picks, truth){
-  return `<ol class="order">${picks.map((id,i)=>`<li><span class="n">${i+1}</span>${esc(P(id).name)}${truth?(truth[i]===id?'<span class="hit">✓</span>':'<span class="miss">✗</span>'):''}</li>`).join('')}</ol>`;
+// alleen de drie plekken die punten opleveren krijgen een vinkje of kruisje
+function myOrderVsTruth(picks, truth, self){
+  const L = picks.length - 1;
+  return `<ol class="order">${picks.map((id,i)=>{ const counts = truth && (i===0 || i===L || id===self);
+    return `<li><span class="n">${i+1}</span>${esc(P(id).name)}${counts?(truth[i]===id?'<span class="hit">✓</span>':'<span class="miss">✗</span>'):''}</li>` }).join('')}</ol>`;
 }
+const RULE = () => `<p class="muted rule">Punten: 1 voor de juiste nummer 1, 1 voor je eigen plek, 1 voor de juiste nummer ${S.players.length}.</p>`;
 const scoreboard = () => standings().map((s,i)=>`<div class="score"><span class="pos">${i+1}</span><span>${esc(s.p.name)}</span><span class="pts">${s.pts}</span></div>`).join('');
 const dnr = q => pre().indexOf(q) + 1;   // doorlopende nummering (13 bestaat niet meer)
 const qLabel = q => q.kind==='pre' ? `Vraag ${dnr(q)}` : q.kind==='challenge' ? 'Challenge' : 'Live-ronde';
@@ -175,14 +179,14 @@ function resultCard(q){
     <p class="muted" style="margin:10px 0 0">${CH_PTS.length+1 <= S.players.length ? 'De rest: 0 punten.' : ''}${scoreQ(q)[me()] ? ` Jij: +${scoreQ(q)[me()].total}.` : ''}</p>`;
   const sc = scoreQ(q);
   const rows = Object.entries(sc).sort((a,b)=>b[1].total-a[1].total).map(([pid,o])=>
-    `<div class="score"><span>${esc(P(pid).name)}${o.bonus?'<span class="tag">beste gok</span>':''}</span><span class="pts">+${o.total}</span></div>`).join('')
+    `<div class="score"><span>${esc(P(pid).name)}${o.total===3?'<span class="tag">alles goed</span>':''}</span><span class="pts">+${o.total}</span></div>`).join('')
     || '<p class="muted">Niemand had een voorspelling.</p>';
   const mine = answers(q,'pred').find(a=>a.player_id===me());
   return `<div class="kicker">${qLabel(q)} · onthuld${q.ranker_id?` · volgens ${esc(P(q.ranker_id).name)}`:''}</div>
     <h2>${esc(q.title)}</h2>${q.secret?`<div class="secret">${esc(q.secret)}</div>`:''}
     <div class="kicker" style="margin:8px 0 4px">De uitslag</div>${order(q.truth)}
-    ${mine ? `<div class="kicker" style="margin:18px 0 4px">Jouw voorspelling · ${sc[me()]?.total ?? 0} punten</div>${myOrderVsTruth(mine.picks, q.truth)}` : ''}
-    <div class="kicker" style="margin:18px 0 4px">Punten</div>${rows}`;
+    ${mine ? `<div class="kicker" style="margin:18px 0 4px">Jouw voorspelling · ${sc[me()]?.total ?? 0} punten</div>${myOrderVsTruth(mine.picks, q.truth, me())}` : ''}
+    <div class="kicker" style="margin:18px 0 4px">Punten</div>${RULE()}${rows}`;
 }
 
 /* ============ schermen: speler ============ */
@@ -220,7 +224,7 @@ function activeCard(q){
   if(mine && !ui.editing[key]) return `<div class="card">${head}<p class="muted">${iRank?'Je rangschikking staat erin.':'Je gok staat erin.'} Wachten op de onthulling…</p>${order(mine.picks)}
     <button class="btn ghost" style="margin-top:10px" data-edit="${key}">Aanpassen</button></div>`;
   const prompt = iRank ? 'Zet de groep op volgorde, jezelf ook. 1 = past het meest.' : `Hoe zet <b>${esc(r.name)}</b> de groep op volgorde? 1 = past het meest.`;
-  return `<div class="card">${head}${picker(key,prompt)}
+  return `<div class="card">${head}${picker(key,prompt)}${iRank?'':RULE()}
     <button class="btn gold" style="margin-top:12px" data-submit="${key}" ${full(key)?'':'disabled'}>${iRank?'Vastzetten':'Gok insturen'}</button></div>`;
 }
 
@@ -234,7 +238,7 @@ function preEditor(q){
   if(mine && !ui.editing[key]) return `<div class="card"><div class="kicker">Vraag ${dnr(q)} van ${list.length} · ingevuld</div><h2>${esc(q.title)}</h2>
     ${order(mine.picks)}<button class="btn ghost" style="margin-top:10px" data-edit="${key}">Aanpassen</button>${nav}</div>`;
   return `<div class="card"><div class="kicker">Vraag ${dnr(q)} van ${list.length}</div><h2>${esc(q.title)}</h2>
-    ${picker(key,'Zet de groep op volgorde, jezelf ook. 1 = past het meest.')}
+    ${picker(key,'Zet de groep op volgorde, jezelf ook. 1 = past het meest.')}${RULE()}
     <button class="btn gold" style="margin-top:12px" data-submit="${key}" ${full(key)?'':'disabled'}>Vastleggen</button>${nav}</div>`;
 }
 
@@ -505,11 +509,12 @@ function viewTv(){
       <div class="winner" style="animation-delay:3.4s">Winnaar: <b>${esc(P(last.truth[0]).name)}</b> (+3)</div>`;
   } else if(last){
     const sc = scoreQ(last), n = last.truth.length;
-    const best = Object.entries(sc).filter(([,o])=>o.bonus).map(([pid])=>esc(P(pid).name));
+    const max = Math.max(0, ...Object.values(sc).map(o=>o.total));
+    const best = max ? Object.entries(sc).filter(([,o])=>o.total===max).map(([pid])=>esc(P(pid).name)) : [];
     main = `<div class="kicker">${qLabel(last)} · de onthulling${last.ranker_id?` · volgens ${esc(P(last.ranker_id).name)}`:''}</div>
       <h1>${esc(last.title)}</h1>${last.secret?`<div class="secret">${esc(last.secret)}</div>`:''}
       ${order(last.truth,'tvorder',0.9)}
-      <div class="winner" style="animation-delay:${(n*0.9+2.2).toFixed(1)}s">${best.length?`Beste voorspelling: <b>${best.join(' & ')}</b> (+${BONUS})`:'Niemand had er iets van goed.'}</div>`;
+      <div class="winner" style="animation-delay:${(n*0.9+2.2).toFixed(1)}s">${best.length?`Beste voorspelling: <b>${best.join(' & ')}</b> (+${max})`:'Niemand had er iets van goed.'}</div>`;
   } else {
     main = `<div class="tvhero big"><img class="tvlogo" src="de_held.jpg" alt="De Held"><div><div class="kicker">Het Heldenweekend 2026</div><h1>Ranking de Helden</h1><p class="sub pulse">Wie wordt de Held?</p></div></div>`;
   }

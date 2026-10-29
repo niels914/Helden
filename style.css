@@ -200,3 +200,4 @@ body.tv #vapor{opacity:.8}
 .sbb.playing{border-color:rgba(110,210,120,.8);box-shadow:0 0 26px rgba(80,200,90,.35),inset 0 0 30px rgba(80,200,90,.15)}
 .sbb.playing::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(80,200,90,.25),transparent 70%);animation:pulse 1s infinite}
 @media (max-width:340px){.sb{grid-template-columns:repeat(2,1fr)}}
+.rule{font-size:13px;margin:10px 0 0}
