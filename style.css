@@ -161,7 +161,7 @@ body.tv #app{max-width:none;padding:4vh 4vw;min-height:100dvh}
 /* ---------- groene damp op de achtergrond ---------- */
 #bg{position:fixed;inset:-15%;z-index:0;pointer-events:none;
   transform:translate3d(0,var(--py,0px),0) rotate(var(--rot,0deg));will-change:transform;transition:transform .6s cubic-bezier(.2,.7,.3,1)}
-#bg::before{content:"";position:absolute;inset:0;background:url(bg_vapor.jpg) 62% 45%/cover no-repeat;
+#bg.static::before{content:"";position:absolute;inset:0;background:url(bg_vapor.jpg) 62% 45%/cover no-repeat;
   opacity:.2;filter:saturate(.95) brightness(.7) contrast(1.15);animation:breathe 38s ease-in-out infinite alternate}
 body.tv #bg::before{opacity:.24}
 @keyframes breathe{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.06) translate(-1.5%,1%)}100%{transform:scale(1.03) translate(1.5%,-1.5%)}}
@@ -178,3 +178,6 @@ body.tv #bg::before{opacity:.24}
 .prow .bar{grid-column:1/-1;margin:2px 0 0}
 .prow.full{border-color:rgba(240,236,228,.45)} .prow.full .pc{color:var(--text)}
 .pmiss{margin:-4px 0 10px;padding:12px 14px;border:1px dashed var(--line);border-radius:3px;font-size:14px;color:var(--muted);line-height:1.6}
+#bg.live{inset:0;transform:none!important;transition:none}
+#vapor{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:.9;filter:blur(1.5px)}
+body.tv #vapor{opacity:.8}
