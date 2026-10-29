@@ -129,8 +129,8 @@ body.tv #app{max-width:none;padding:4vh 4vw;min-height:100dvh}
 .tab .ping{position:absolute;top:-2px;right:-4px;width:8px;height:8px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px var(--ember);animation:pulse 1.6s infinite}
 .tab.mid .ic{width:60px;height:60px;margin-top:-26px;border-radius:50%;border:1px solid rgba(240,236,228,.5);background:#000;box-shadow:0 0 22px rgba(240,236,228,.15)}
 .tab.mid svg{width:30px;height:30px}
-.tab.mid.on .ic{background:var(--text);color:#000;border-color:var(--text);box-shadow:0 0 26px rgba(240,236,228,.4)}
-.tab.mid.on svg{filter:none}
+.tab.mid.on .ic{border-color:rgba(240,236,228,.85);box-shadow:inset 0 0 0 60px rgba(0,0,0,.18),0 0 26px rgba(80,200,90,.35)}
+.tab.mid.on svg{filter:drop-shadow(0 0 6px rgba(0,0,0,.8))}
 .score.mine{background:rgba(240,236,228,.05)}
 /* ---------- challenges ---------- */
 .pts3{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
@@ -157,3 +157,14 @@ body.tv #app{max-width:none;padding:4vh 4vw;min-height:100dvh}
 .heldnow{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:3px;padding:10px 14px 10px 6px;margin:0 0 6px;background:var(--card)}
 .heldnow img{width:76px;height:76px;object-fit:cover;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%);mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,#000 55%,transparent 90%)}
 .heldnow .hn{font:700 24px "Playfair Display",Georgia,serif;text-transform:uppercase;letter-spacing:.08em;text-shadow:var(--glow)}
+
+/* ---------- groene damp op de achtergrond ---------- */
+#bg{position:fixed;inset:-15%;z-index:0;pointer-events:none;
+  transform:translate3d(0,var(--py,0px),0) rotate(var(--rot,0deg));will-change:transform;transition:transform .6s cubic-bezier(.2,.7,.3,1)}
+#bg::before{content:"";position:absolute;inset:0;background:url(bg_vapor.jpg) 62% 45%/cover no-repeat;
+  opacity:.2;filter:saturate(.95) brightness(.7) contrast(1.15);animation:breathe 38s ease-in-out infinite alternate}
+body.tv #bg::before{opacity:.24}
+@keyframes breathe{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.06) translate(-1.5%,1%)}100%{transform:scale(1.03) translate(1.5%,-1.5%)}}
+@media (prefers-reduced-motion:reduce){#bg::before{animation:none}#bg{transition:none}}
+/* stand-knop met damp */
+.tab.mid .ic{background:url(tab_vapor.jpg) center/cover;box-shadow:inset 0 0 0 60px rgba(0,0,0,.5),0 0 22px rgba(80,200,90,.12);color:var(--text)}

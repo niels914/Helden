@@ -546,6 +546,14 @@ document.addEventListener('click', e => {
 window.addEventListener('hashchange', ()=>{ ui.openQ=null; render(true) });
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh() });
 
+/* ============ achtergrond beweegt rustig mee met scrollen ============ */
+(()=>{ const bg = document.getElementById('bg'); if(!bg) return; let tick = false;
+  const upd = () => { const y = window.scrollY || 0;
+    bg.style.setProperty('--py', (-y*0.12).toFixed(1)+'px');
+    bg.style.setProperty('--rot', Math.max(-6, Math.min(6, y*0.004)).toFixed(2)+'deg'); tick = false };
+  window.addEventListener('scroll', ()=>{ if(!tick){ tick = true; requestAnimationFrame(upd) } }, {passive:true}); upd();
+})();
+
 /* ============ start ============ */
 (async()=>{
   try{ db = MOCK ? mockDb() : await supaDb() }
