@@ -189,3 +189,14 @@ body.tv #vapor{opacity:.8}
 .qn.prev{justify-self:start} .qn.next{justify-self:end} .qn.mid{justify-self:center;color:var(--dim)}
 .qn:active{color:var(--text)}
 .qn[disabled]{opacity:.25;pointer-events:none}
+/* ---------- soundboard ---------- */
+.sb{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.sbb{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;aspect-ratio:1;padding:10px 6px;
+  border:1px solid var(--line);border-radius:4px;background:rgba(0,0,0,.45);color:var(--text);cursor:pointer;touch-action:manipulation;overflow:hidden;
+  backdrop-filter:blur(3px);transition:border-color .2s,box-shadow .2s,transform .1s}
+.sbb:active{transform:scale(.96)}
+.sbl{font:700 17px "Playfair Display",Georgia,serif;text-transform:uppercase;letter-spacing:.08em;text-shadow:var(--glow)}
+.sbt{font-size:10.5px;line-height:1.3;color:var(--muted);text-align:center}
+.sbb.playing{border-color:rgba(110,210,120,.8);box-shadow:0 0 26px rgba(80,200,90,.35),inset 0 0 30px rgba(80,200,90,.15)}
+.sbb.playing::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(80,200,90,.25),transparent 70%);animation:pulse 1s infinite}
+@media (max-width:340px){.sb{grid-template-columns:repeat(2,1fr)}}

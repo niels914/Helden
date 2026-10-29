@@ -1,4 +1,4 @@
-import { PLAYERS, PRE, LIVE, CHALLENGES } from './data.js';
+import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js';
 
 /* ============ config ============ */
 const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';
@@ -347,13 +347,30 @@ function tabChallenges(){
     return `<div class="chal done"><div class="kicker">Challenge ${q.nr} · uitslag${mine?` · jij +${mine.total}`:''}</div><div class="ct">${esc(q.title)}</div>${podium(q)}</div>`;
   }).join('');
 }
+/* ---------- soundboard ---------- */
+const snd = { audio:null, id:null };
+function tabSound(){
+  return `<div class="center" style="margin:6px 0 14px"><div class="kicker">Soundboard</div>
+    <p class="muted" style="margin:6px 0 0;font-size:14px">Koppel je telefoon aan de boombox en tik.</p></div>
+    <div class="sb">${SOUNDS.map(([id,label,text])=>`<button class="sbb ${snd.id===id?'playing':''}" data-sound="${id}">
+      <span class="sbl">${esc(label)}</span><span class="sbt">${esc(text)}</span></button>`).join('')}</div>`;
+}
+function playSound(id){
+  const mark = () => document.querySelectorAll('.sbb').forEach(b=>b.classList.toggle('playing', b.dataset.sound===snd.id));
+  if(snd.audio){ snd.audio.pause(); snd.audio.currentTime = 0 }
+  if(snd.id === id){ snd.audio = null; snd.id = null; return mark() }   // nogmaals tikken = stoppen
+  const au = new Audio(`sounds/${id}.mp3`);
+  snd.audio = au; snd.id = id; mark();
+  au.onended = () => { if(snd.audio===au){ snd.audio=null; snd.id=null; mark() } };
+  au.play().catch(()=>{ snd.audio=null; snd.id=null; mark() });
+}
 const tabSoon = (title, text) => `<div class="card big-wait" style="margin-top:20vh"><div class="kicker">Binnenkort</div><h2>${title}</h2><p class="muted" style="margin:8px 0 0">${text}</p></div>`;
 
 function viewPlayer(){
   const tab = ui.tab || defaultTab();
   const body = tab==='event' ? tabEvent() : tab==='ranking' ? tabRanking() : tab==='stand' ? tabStand()
     : tab==='challenges' ? tabChallenges()
-    : tabSoon('Soundboard','Geluiden voor de boombox. Wordt nog gebouwd.');
+    : tabSound();
   return header() + body + tabBar(tab);
 }
 
@@ -523,7 +540,7 @@ function arm(tag){ if(ui.arm===tag){ ui.arm=null; return true } ui.arm=tag; rend
 document.addEventListener('input', e => { if(e.target.id==='custom'){ ui.customTitle = e.target.value; render() } });
 document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='code') document.querySelector('[data-act=code]')?.click() });
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab],[data-chopen],[data-chhide],[data-chsave],[data-atab],[data-player]');
+  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab],[data-chopen],[data-chhide],[data-chsave],[data-atab],[data-player],[data-sound]');
   if(!t || t.disabled) return;
   const d = t.dataset;
   if(d.act) e.preventDefault();
@@ -535,6 +552,7 @@ document.addEventListener('click', e => {
   if(d.act==='retry') return refresh();
   if(d.act==='logout'){ ls.del('helden_me'); location.hash=''; return render(true) }
   if(d.me){ ls.set('helden_me', d.me); return render(true) }
+  if(d.sound){ playSound(d.sound); return }
   if(d.tab){ ui.tab = d.tab; ui.openQ = null; window.scrollTo(0,0); return render() }
   if(d.atab){ ui.atab = d.atab; ui.truthFor = null; window.scrollTo(0,0); return render() }
   if(d.player){ ui.openPlayer = ui.openPlayer===d.player ? null : d.player; return render() }

@@ -62,3 +62,19 @@ export const CHALLENGES = [
   'Wie wint Memester?',
   'Wie heeft het snelst een adje?',
 ];
+
+// Soundboard: [bestand, knop, gesproken tekst]
+export const SOUNDS = [
+  ['joost', 'Joost', 'Oh, die heerlijke krullen van je'],
+  ['stijn', 'Stijn', 'Nou, de lengte heb je wel mee'],
+  ['mike', 'Mike', 'Rijden, rijden, rijden op een wagentje'],
+  ['ruben', 'Ruben', 'Oh vies, vies, viezerikje van me'],
+  ['rick', 'Rick', 'Jammer dat je op mannen valt, knapperd'],
+  ['niels', 'Niels', 'Hmm, lekker beertje van me'],
+  ['gadoor', 'Ga door', 'Oh ja, ga alsjeblieft door'],
+  ['hottub', 'Hottub', 'Zullen we lekker badderen?'],
+  ['bal', 'Bal', 'Oh ja, sla maar raak'],
+  ['gas', 'Gas', 'Ja, gas op die lolly!'],
+  ['harder', 'Harder', 'Harder, ja harder, ja harder!'],
+  ['ballen', 'Ballen', 'Stop je ballen in mijn koker'],
+];
