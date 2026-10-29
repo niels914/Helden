@@ -1,0 +1,446 @@
+import { PLAYERS, PRE, LIVE } from './data.js';
+
+/* ============ config ============ */
+const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlkcWF5cmRjZ3hjdW1vZXJ4eHZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwMDY3NzYsImV4cCI6MjEwNjU4Mjc3Nn0.nA0Uw-pn1nCeCt7NRNJgKrDDkvZNyTK9MZPKmXGSaHg';
+const GAME_CODE = 'HELDEN';
+const ADMINS = ['niels'];                                   // de quizmaster
+const DEADLINE = Date.parse('2026-11-06T17:00:00+01:00');   // voorspellingen sluiten bij aankomst
+const BONUS = 2;
+const params = new URLSearchParams(location.search);
+const MOCK = params.has('mock');
+const NOWOFF = MOCK && params.get('now') ? Date.parse(params.get('now')) - Date.now() : 0;
+const now = () => Date.now() + NOWOFF;
+const predOpen = () => now() < DEADLINE;
+
+/* ============ opslag ============ */
+const ls = {
+  get(k){ try{ return localStorage.getItem(k) }catch{ return null } },
+  set(k,v){ try{ localStorage.setItem(k,v) }catch{} },
+  del(k){ try{ localStorage.removeItem(k) }catch{} },
+};
+const iso = s => new Date(s + ':00+01:00').toISOString();
+
+function seedQuestions(){
+  let id = 0; const qs = [];
+  for(const [nr,title,secret,mode,at] of PRE)
+    qs.push({id:++id, kind:'pre', nr, cat:null, title, secret, mode, push_at:iso(at), status:'closed', ranker_id:null, truth:null, ts:null, sort:nr});
+  let s = 100;
+  for(const [cat,list] of Object.entries(LIVE)) for(const title of list)
+    qs.push({id:++id, kind:'live', nr:null, cat, title, secret:null, mode:'ranker', push_at:null, status:'closed', ranker_id:null, truth:null, ts:null, sort:++s});
+  return qs;
+}
+
+function mockDb(){
+  const KEY = 'helden_mock_v2', bc = 'BroadcastChannel' in window ? new BroadcastChannel('helden2') : null;
+  let d; try{ d = JSON.parse(ls.get(KEY)) }catch{}
+  if(!d) d = { players: PLAYERS.map(([id,name],i)=>({id,name,sort:i+1})), questions: seedQuestions(), answers: [], seq: 1000 };
+  const subs = [];
+  const save = () => { ls.set(KEY, JSON.stringify(d)); bc && bc.postMessage(1); subs.forEach(f=>f()) };
+  bc && (bc.onmessage = () => { try{ d = JSON.parse(ls.get(KEY)) || d }catch{}; subs.forEach(f=>f()) });
+  return {
+    async load(){ return structuredClone({players:d.players, questions:d.questions, answers:d.answers}) },
+    async setAnswer(a){ d.answers = d.answers.filter(x=>!(x.question_id===a.question_id && x.player_id===a.player_id && x.kind===a.kind)); d.answers.push(a); save() },
+    async delAnswers(qid, kind){ d.answers = d.answers.filter(x=>!(x.question_id===qid && (!kind || x.kind===kind))); save() },
+    async updateQ(id, p){ Object.assign(d.questions.find(q=>q.id===id), p); save() },
+    async addQ(q){ d.questions.push({id:++d.seq, nr:null, secret:null, push_at:null, status:'closed', ranker_id:null, truth:null, ts:null, sort:999, ...q}); save() },
+    subscribe(f){ subs.push(f) },
+  };
+}
+
+async function supaDb(){
+  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+  const sb = createClient(SB_URL, SB_KEY, { auth:{ persistSession:false } });
+  const chk = ({error}) => { if(error) throw new Error(error.message) };
+  return {
+    async load(){
+      const [p,q,a] = await Promise.all([
+        sb.from('helden_players').select('*').order('sort'),
+        sb.from('helden_questions').select('*').order('sort').order('id'),
+        sb.from('helden_answers').select('*'),
+      ]);
+      [p,q,a].forEach(chk);
+      return {players:p.data, questions:q.data, answers:a.data};
+    },
+    async setAnswer(a){ chk(await sb.from('helden_answers').upsert(a)) },
+    async delAnswers(qid, kind){ let r = sb.from('helden_answers').delete().eq('question_id', qid); if(kind) r = r.eq('kind', kind); chk(await r) },
+    async updateQ(id, p){ chk(await sb.from('helden_questions').update(p).eq('id', id)) },
+    async addQ(q){ chk(await sb.from('helden_questions').insert({sort:999, ...q})) },
+    subscribe(f){
+      sb.channel('helden')
+        .on('postgres_changes', {event:'*', schema:'public', table:'helden_questions'}, f)
+        .on('postgres_changes', {event:'*', schema:'public', table:'helden_answers'}, f)
+        .subscribe();
+    },
+  };
+}
+
+/* ============ state ============ */
+let db, S = null, loadErr = null, lastSig = '';
+const ui = { picks:{}, editing:{}, openQ:null, truthFor:null, newLive:null, newRanker:null, customTitle:'', arm:null, busy:false, codeErr:false };
+const AS = MOCK ? params.get('as') : null;   // alleen voor testen
+if(AS) ls.set('helden_code', GAME_CODE);
+const me = () => AS || ls.get('helden_me');
+const isAdmin = () => ADMINS.includes(me());
+const P = id => S.players.find(p=>p.id===id) || {id, name:id};
+const Q = id => S.questions.find(q=>q.id===id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const route = () => location.hash.replace('#','') || 'speler';
+const stamp = () => new Date(now()).toISOString();
+
+async function refresh(){
+  try{ S = await db.load(); loadErr = null }
+  catch(e){ loadErr = e.message || String(e) }
+  render();
+}
+let rt; const soonRefresh = () => { clearTimeout(rt); rt = setTimeout(refresh, 150) };
+async function act(fn){
+  if(ui.busy) return; ui.busy = true;
+  try{ await fn(); await refresh() }
+  catch(e){ loadErr = 'Opslaan mislukt: ' + (e.message||e); render(true) }
+  finally{ ui.busy = false }
+}
+
+/* ============ spelregels ============ */
+const pre = () => S.questions.filter(q=>q.kind==='pre').sort((a,b)=>a.nr-b.nr);
+const live = () => S.questions.filter(q=>q.kind==='live');
+const answers = (q, kind) => S.answers.filter(a=>a.question_id===q.id && a.kind===kind);
+const myAnswer = (q, kind) => answers(q,kind).find(a=>a.player_id===me());
+const active = () => S.questions.find(q=>q.status==='voting' || q.status==='open');
+const lastRevealed = () => S.questions.filter(q=>q.status==='revealed').sort((a,b)=>(b.ts||'').localeCompare(a.ts||''))[0];
+const progress = pid => pre().filter(q=>S.answers.some(a=>a.question_id===q.id && a.kind==='pred' && a.player_id===pid)).length;
+
+// groepsuitslag: gemiddelde positie over alle stemmen
+function groupTruth(q){
+  const votes = answers(q,'vote'); if(!votes.length) return null;
+  const sum = Object.fromEntries(S.players.map(p=>[p.id,0]));
+  for(const v of votes) v.picks.forEach((id,i)=>{ if(id in sum) sum[id] += i });
+  return S.players.slice().sort((a,b)=>sum[a.id]-sum[b.id] || a.sort-b.sort).map(p=>p.id);
+}
+function scoreQ(q){
+  const out = {};
+  if(q.status!=='revealed' || !q.truth) return out;
+  for(const a of answers(q,'pred')){
+    if(a.player_id === q.ranker_id) continue;
+    out[a.player_id] = { exact: a.picks.filter((p,i)=>q.truth[i]===p).length, bonus:0 };
+  }
+  const max = Math.max(0, ...Object.values(out).map(o=>o.exact));
+  if(max > 0) for(const o of Object.values(out)) if(o.exact === max) o.bonus = BONUS;
+  for(const o of Object.values(out)) o.total = o.exact + o.bonus;
+  return out;
+}
+function standings(){
+  const tot = Object.fromEntries(S.players.map(p=>[p.id,0]));
+  for(const q of S.questions) for(const [pid,o] of Object.entries(scoreQ(q))) if(pid in tot) tot[pid] += o.total;
+  return S.players.map(p=>({p, pts:tot[p.id]})).sort((a,b)=>b.pts-a.pts || a.p.sort-b.p.sort);
+}
+
+/* ============ tijd ============ */
+const fmtAt = s => { if(!s) return ''; const d = new Date(s);
+  return d.toLocaleDateString('nl-NL',{weekday:'short', timeZone:'Europe/Amsterdam'}) + ' ' + d.toLocaleTimeString('nl-NL',{hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam'}) };
+function countdown(){
+  let s = Math.max(0, Math.floor((DEADLINE - now())/1000));
+  const d = Math.floor(s/86400); s %= 86400; const h = Math.floor(s/3600); s %= 3600; const m = Math.floor(s/60);
+  return (d ? d+'d ' : '') + String(h).padStart(2,'0') + 'u ' + String(m).padStart(2,'0') + 'm';
+}
+
+/* ============ bouwstenen ============ */
+function picker(key, prompt){
+  const picks = ui.picks[key] || [];
+  return `<p class="muted" style="margin:4px 0 12px">${prompt}</p>
+    <div class="stack">${S.players.map(p=>{ const i = picks.indexOf(p.id);
+      return `<button class="btn pick ${i>=0?'on':''}" data-pick="${esc(key)}" data-id="${p.id}">${esc(p.name)}<span class="badge">${i>=0?i+1:''}</span></button>` }).join('')}</div>
+    <div class="row" style="margin-top:10px"><button class="btn ghost small" data-clear="${esc(key)}" ${picks.length?'':'disabled'}>Opnieuw</button></div>`;
+}
+const full = key => (ui.picks[key]||[]).length === S.players.length;
+function order(list, cls='', delayStep=0){
+  return `<ol class="order ${cls}">${list.map((id,i)=>`<li style="animation-delay:${((list.length-1-i)*delayStep + (delayStep?1.6:0)).toFixed(2)}s"><span class="n">${i+1}</span>${esc(P(id).name)}</li>`).join('')}</ol>`;
+}
+function myOrderVsTruth(picks, truth){
+  return `<ol class="order">${picks.map((id,i)=>`<li><span class="n">${i+1}</span>${esc(P(id).name)}${truth?(truth[i]===id?'<span class="hit">✓</span>':'<span class="miss">✗</span>'):''}</li>`).join('')}</ol>`;
+}
+const scoreboard = () => standings().map((s,i)=>`<div class="score"><span class="pos">${i+1}</span><span>${esc(s.p.name)}</span><span class="pts">${s.pts}</span></div>`).join('');
+const dnr = q => pre().indexOf(q) + 1;   // doorlopende nummering (13 bestaat niet meer)
+const qLabel = q => q.kind==='pre' ? `Vraag ${dnr(q)}` : 'Live-ronde';
+
+function resultCard(q){
+  const sc = scoreQ(q);
+  const rows = Object.entries(sc).sort((a,b)=>b[1].total-a[1].total).map(([pid,o])=>
+    `<div class="score"><span>${esc(P(pid).name)}${o.bonus?'<span class="tag">beste gok</span>':''}</span><span class="pts">+${o.total}</span></div>`).join('')
+    || '<p class="muted">Niemand had een voorspelling.</p>';
+  const mine = answers(q,'pred').find(a=>a.player_id===me());
+  return `<div class="kicker">${qLabel(q)} · onthuld${q.ranker_id?` · volgens ${esc(P(q.ranker_id).name)}`:''}</div>
+    <h2>${esc(q.title)}</h2>${q.secret?`<div class="secret">${esc(q.secret)}</div>`:''}
+    <div class="kicker" style="margin:8px 0 4px">De uitslag</div>${order(q.truth)}
+    ${mine ? `<div class="kicker" style="margin:18px 0 4px">Jouw voorspelling · ${sc[me()]?.total ?? 0} punten</div>${myOrderVsTruth(mine.picks, q.truth)}` : ''}
+    <div class="kicker" style="margin:18px 0 4px">Punten</div>${rows}`;
+}
+
+/* ============ schermen: speler ============ */
+function viewLogin(){
+  if(ls.get('helden_code') !== GAME_CODE){
+    return `<div style="margin-top:14vh" class="center">
+      <div class="kicker">Het Heldenweekend 2026</div><h1>Ranking de Helden</h1>
+      <p class="muted" style="margin-top:18px">Vul de code in.</p>
+      <div class="stack" style="margin-top:20px">
+        <input type="text" id="code" autocomplete="off" autocapitalize="characters" placeholder="Code">
+        ${ui.codeErr?'<div class="err">Dat is niet de code.</div>':''}
+        <button class="btn gold" data-act="code">Verder</button>
+      </div></div>`;
+  }
+  return `<div style="margin-top:8vh" class="center"><div class="kicker">Wie ben jij?</div><h1>Kies je naam</h1></div>
+    <div class="stack" style="margin-top:20px">${S.players.map(p=>`<button class="btn" data-me="${p.id}">${esc(p.name)}</button>`).join('')}</div>`;
+}
+const header = () => `<div class="toplinks"><span class="me">${esc(P(me()).name)}</span>
+  <span>${isAdmin() ? (route()==='admin' ? '<a href="#">Speler</a> · ' : '<a href="#admin">Quizmaster</a> · ') : ''}<a href="#" data-act="logout">Wissel</a></span></div>`;
+
+function activeCard(q){
+  if(q.status === 'voting'){
+    const key = q.id+':vote', mine = myAnswer(q,'vote');
+    const head = `<div class="kicker">${qLabel(q)} · stemming</div><h2>${esc(q.title)}</h2><div class="secret">${esc(q.secret)}</div>`;
+    if(mine && !ui.editing[key]) return `<div class="card">${head}<p class="muted">Je stem staat erin. Wachten op de rest…</p>${order(mine.picks)}
+      <button class="btn ghost" style="margin-top:10px" data-edit="${key}">Aanpassen</button></div>`;
+    return `<div class="card">${head}${picker(key,'Wat is <b>volgens jou</b> de echte volgorde? 1 = het meest. Het gemiddelde van alle stemmen wordt de uitslag.')}
+      <button class="btn gold" style="margin-top:12px" data-submit="${key}" ${full(key)?'':'disabled'}>Stem insturen</button></div>`;
+  }
+  // live-ronde
+  const iRank = q.ranker_id === me();
+  const kind = iRank ? 'vote' : 'pred', key = q.id+':'+kind, mine = myAnswer(q,kind), r = P(q.ranker_id);
+  const head = `<div class="kicker">${iRank?'Live-ronde · jij rangschikt':`Live-ronde · ${esc(r.name)} rangschikt`}</div><h2>${esc(q.title)}</h2>`;
+  if(mine && !ui.editing[key]) return `<div class="card">${head}<p class="muted">${iRank?'Je rangschikking staat erin.':'Je gok staat erin.'} Wachten op de onthulling…</p>${order(mine.picks)}
+    <button class="btn ghost" style="margin-top:10px" data-edit="${key}">Aanpassen</button></div>`;
+  const prompt = iRank ? 'Zet de groep op volgorde, jezelf ook. 1 = past het meest.' : `Hoe zet <b>${esc(r.name)}</b> de groep op volgorde? 1 = past het meest.`;
+  return `<div class="card">${head}${picker(key,prompt)}
+    <button class="btn gold" style="margin-top:12px" data-submit="${key}" ${full(key)?'':'disabled'}>${iRank?'Vastzetten':'Gok insturen'}</button></div>`;
+}
+
+function preEditor(q){
+  const key = q.id+':pred', mine = myAnswer(q,'pred');
+  const list = pre(), idx = list.indexOf(q);
+  const nav = `<div class="row between" style="margin-top:12px">
+    <button class="btn small ghost" data-open="${list[idx-1]?.id ?? ''}" ${idx>0?'':'disabled'}>‹ Vorige</button>
+    <button class="btn small ghost" data-open="">Overzicht</button>
+    <button class="btn small ghost" data-open="${list[idx+1]?.id ?? ''}" ${idx<list.length-1?'':'disabled'}>Volgende ›</button></div>`;
+  if(mine && !ui.editing[key]) return `<div class="card"><div class="kicker">Vraag ${dnr(q)} van ${list.length} · ingevuld</div><h2>${esc(q.title)}</h2>
+    ${order(mine.picks)}<button class="btn ghost" style="margin-top:10px" data-edit="${key}">Aanpassen</button>${nav}</div>`;
+  return `<div class="card"><div class="kicker">Vraag ${dnr(q)} van ${list.length}</div><h2>${esc(q.title)}</h2>
+    ${picker(key,'Zet de groep op volgorde, jezelf ook. 1 = past het meest.')}
+    <button class="btn gold" style="margin-top:12px" data-submit="${key}" ${full(key)?'':'disabled'}>Vastleggen</button>${nav}</div>`;
+}
+
+function preList(){
+  const open = predOpen();
+  return pre().map(q=>{
+    const done = !!myAnswer(q,'pred'), rev = q.status==='revealed';
+    const st = rev ? `+${scoreQ(q)[me()]?.total ?? 0}` : open ? (done?'✓':'open') : 'geheim';
+    const sub = rev ? `<small>${esc(q.secret)}</small>` : '';
+    return `<button class="qrow ${done&&open?'done':''} ${rev?'rev':''}" data-open="${q.id}"><span class="nr">${dnr(q)}</span><span class="t">${esc(q.title)}${sub}</span><span class="st">${st}</span></button>`;
+  }).join('');
+}
+
+function viewPlayer(){
+  let html = header();
+  const a = active();
+  if(ui.openQ){
+    const q = Q(ui.openQ);
+    if(q && q.status==='revealed') return html + `<div class="card">${resultCard(q)}<button class="btn ghost" style="margin-top:12px" data-open="">Terug</button></div>`;
+    if(q && predOpen()) return html + preEditor(q);
+    ui.openQ = null;
+  }
+  if(a) html += activeCard(a);
+  if(predOpen()){
+    const n = progress(me()), tot = pre().length;
+    html += `<div class="card center"><div class="kicker">Voorspellingen sluiten over</div><div class="cnt">${countdown()}</div>
+      <p class="muted" style="margin:10px 0 0">${n===tot ? 'Alles ingevuld. Aanpassen mag tot de deadline.' : 'Zet bij elke vraag de groep op volgorde. Wat de vragen betekenen, blijkt in het weekend.'}</p>
+      <div class="bar"><i style="width:${Math.round(n/tot*100)}%"></i></div><div class="kicker">${n} / ${tot} ingevuld</div></div>`;
+    if(n < tot && !a){
+      const next = pre().find(q=>!myAnswer(q,'pred'));
+      html += `<button class="btn gold" data-open="${next.id}">${n ? 'Verder invullen' : 'Begin'}</button>`;
+    }
+    html += `<div style="margin-top:16px">${preList()}</div>`;
+  } else {
+    const last = lastRevealed();
+    if(!a) html += last ? `<div class="card">${resultCard(last)}</div><p class="center muted pulse">Wachten op de volgende onthulling…</p>`
+      : `<div class="card big-wait"><div class="kicker">De voorspellingen staan vast</div><h2 class="pulse">Wacht op de quizmaster</h2></div>`;
+    html += `<div class="card"><div class="kicker" style="margin-bottom:6px">Stand</div>${scoreboard()}</div>
+      <div class="kicker" style="margin:18px 0 8px">Vooraf-vragen</div>${preList()}`;
+  }
+  return html;
+}
+
+/* ============ scherm: quizmaster ============ */
+function viewAdmin(){
+  if(!isAdmin()) return header() + `<div class="card">Alleen de quizmaster heeft toegang.</div>`;
+  const a = active(), open = predOpen();
+  let html = header() + `<div class="center"><div class="kicker">Quizmaster</div></div>`;
+
+  // actieve ronde
+  if(a){
+    const kind = a.status==='voting' ? 'vote' : 'pred';
+    const who = id => a.status==='voting' ? answers(a,'vote').some(x=>x.player_id===id)
+      : id===a.ranker_id ? answers(a,'vote').some(x=>x.player_id===id) : answers(a,'pred').some(x=>x.player_id===id);
+    const ready = a.status==='voting' ? answers(a,'vote').length>0 : answers(a,'vote').some(x=>x.player_id===a.ranker_id);
+    html += `<div class="card"><div class="kicker">Loopt nu · ${qLabel(a)}${a.status==='voting'?' · stemming':''}</div><h2>${esc(a.title)}</h2>
+      ${a.secret?`<div class="secret">${esc(a.secret)}</div>`:''}
+      ${a.ranker_id?`<p class="muted">Rangschikker: <b>${esc(P(a.ranker_id).name)}</b></p>`:''}
+      <div class="chips" style="margin:10px 0 14px">${S.players.map(p=>`<span class="chip ${who(p.id)?'on':''}">${esc(p.name)}${p.id===a.ranker_id?' ★':''}${who(p.id)?' ✓':''}</span>`).join('')}</div>
+      ${!ready ? `<p class="muted">${a.status==='voting'?'Nog geen stemmen.':`Wachten tot ${esc(P(a.ranker_id).name)} heeft gerangschikt.`}</p>`:''}
+      <button class="btn gold" data-reveal="${a.id}" ${ready?'':'disabled'}>Onthullen</button>
+      <button class="btn ghost danger" style="margin-top:8px" data-cancel="${a.id}">${ui.arm==='c'+a.id?'Zeker? Tik nog een keer':'Annuleren'}</button></div>`;
+  }
+
+  // voortgang voorspellingen
+  html += `<div class="card"><div class="kicker">Voorspellingen ${open?`· sluiten over ${countdown()}`:'· gesloten'}</div>
+    <div class="chips" style="margin-top:10px">${S.players.map(p=>`<span class="chip ${progress(p.id)===pre().length?'on':''}">${esc(p.name)} ${progress(p.id)}/${pre().length}</span>`).join('')}</div></div>`;
+
+  // vooraf-vragen
+  html += `<div class="card"><div class="kicker">Vooraf-vragen</div>${open?'<p class="muted" style="font-size:14px">Onthullen kan vanaf vrijdag 17:00.</p>':''}` + pre().map(q=>{
+    let ctl = '';
+    if(q.status==='revealed') ctl = `<button class="btn small ghost" data-undo="${q.id}">${ui.arm==='u'+q.id?'Zeker? Tik nog een keer':'Onthulling terugdraaien'}</button>`;
+    else if(q.status==='closed' && q.mode==='gemeten'){
+      if(ui.truthFor===q.id) ctl = picker('truth'+q.id,'Tik de echte volgorde. 1 = het meest.') +
+        `<button class="btn gold" style="margin-top:10px" data-truth="${q.id}" ${full('truth'+q.id)?'':'disabled'}>Onthullen</button>`;
+      else ctl = `<button class="btn small" data-truthopen="${q.id}" ${open||a?'disabled':''}>Uitslag invullen</button>`;
+    } else if(q.status==='closed') ctl = `<button class="btn small" data-vote="${q.id}" ${open||a?'disabled':''}>Start stemming</button>`;
+    const st = q.status==='revealed' ? 'onthuld' : q.status==='voting' ? 'stemming loopt' : fmtAt(q.push_at);
+    return `<div class="adm"><div><b>${dnr(q)}.</b> ${esc(q.title)}</div>
+      <div class="meta">${esc(q.secret)} · ${q.mode==='gemeten'?'jij vult in':'groep stemt'} · ${st}</div>${ctl}</div>`;
+  }).join('') + `</div>`;
+
+  // live-rondes
+  const cats = [...new Set(live().map(q=>q.cat))];
+  html += `<div class="card"><div class="kicker">Live-rondes</div><h2 style="margin-top:6px">1. Kies een vraag</h2>` +
+    cats.map(c=>`<div class="kicker" style="margin:14px 0 8px">${esc(c)}</div><div class="chips">${live().filter(q=>q.cat===c).map(q=>
+      `<button class="chip ${ui.newLive===q.id?'on':''} ${q.status==='revealed'?'done':''}" data-live="${q.id}" ${q.status!=='closed'?'disabled':''}>${esc(q.title)}</button>`).join('')}</div>`).join('') +
+    `<div style="margin-top:14px"><input type="text" id="custom" placeholder="Of typ een eigen vraag" value="${esc(ui.customTitle)}"></div>
+     <button class="btn small" style="margin-top:8px;width:100%" data-act="addlive" ${ui.customTitle.trim()?'':'disabled'}>Vraag toevoegen</button>
+     <h2 style="margin-top:22px">2. Wie rangschikt?</h2><div class="chips">${S.players.map(p=>
+      `<button class="chip ${ui.newRanker===p.id?'on':''}" data-ranker="${p.id}">${esc(p.name)}</button>`).join('')}
+      <button class="chip ${ui.newRanker==='_random'?'on':''}" data-ranker="_random">Willekeurig</button></div>
+     <button class="btn gold" style="margin-top:16px" data-act="startlive" ${!a && ui.newLive && ui.newRanker?'':'disabled'}>${a?'Eerst lopende ronde afronden':'Start live-ronde'}</button></div>`;
+
+  html += `<div class="card"><div class="kicker" style="margin-bottom:6px">Stand</div>${scoreboard()}</div>
+    <p class="center"><a href="#tv" class="muted">Tv-scherm openen</a></p>`;
+  return html;
+}
+
+/* ============ scherm: tv ============ */
+function viewTv(){
+  const a = active(), last = lastRevealed();
+  let main;
+  if(a){
+    const who = id => a.status==='voting' ? answers(a,'vote').some(x=>x.player_id===id)
+      : id===a.ranker_id ? answers(a,'vote').some(x=>x.player_id===id) : answers(a,'pred').some(x=>x.player_id===id);
+    main = `<div class="kicker">${a.status==='voting'?`${qLabel(a)} · iedereen stemt`:`Live-ronde · ${esc(P(a.ranker_id).name)} rangschikt`}</div>
+      <h1>${esc(a.title)}</h1>${a.secret?`<div class="secret">${esc(a.secret)}</div>`:''}
+      <div class="tvgrid">${S.players.map(p=>`<div class="tvp ${who(p.id)?'in':''} ${p.id===a.ranker_id?'ranker':''}">${esc(p.name)}
+        <div class="st">${who(p.id)?'klaar':'denkt na…'}</div></div>`).join('')}</div>`;
+  } else if(predOpen()){
+    main = `<div class="kicker">Het Heldenweekend 2026</div><h1 class="tvtitle">Ranking de Helden</h1>
+      <div class="kicker" style="margin-top:4vh">Voorspellingen sluiten over</div><div class="cnt">${countdown()}</div>
+      <div class="tvgrid">${S.players.map(p=>`<div class="tvp ${progress(p.id)===pre().length?'in':''}">${esc(p.name)}<div class="st">${progress(p.id)} / ${pre().length}</div></div>`).join('')}</div>`;
+  } else if(last){
+    const sc = scoreQ(last), n = last.truth.length;
+    const best = Object.entries(sc).filter(([,o])=>o.bonus).map(([pid])=>esc(P(pid).name));
+    main = `<div class="kicker">${qLabel(last)} · de onthulling${last.ranker_id?` · volgens ${esc(P(last.ranker_id).name)}`:''}</div>
+      <h1>${esc(last.title)}</h1>${last.secret?`<div class="secret">${esc(last.secret)}</div>`:''}
+      ${order(last.truth,'tvorder',0.9)}
+      <div class="winner" style="animation-delay:${(n*0.9+2.2).toFixed(1)}s">${best.length?`Beste voorspelling: <b>${best.join(' & ')}</b> (+${BONUS})`:'Niemand had er iets van goed.'}</div>`;
+  } else {
+    main = `<div class="kicker">Het Heldenweekend 2026</div><h1 class="tvtitle">Ranking de Helden</h1><p class="sub pulse">Wie wordt de Held?</p>`;
+  }
+  return `<div class="tv tvwrap"><div>${main}</div><div class="tvside card"><h2>Stand</h2>${scoreboard()}</div></div>`;
+}
+
+/* ============ render ============ */
+function render(force){
+  document.body.classList.toggle('tv', route()==='tv');
+  const sig = JSON.stringify([S, loadErr, ui, route(), me(), Math.floor(now()/30000)]);
+  if(!force && sig === lastSig) return; lastSig = sig;
+  const app = document.getElementById('app');
+  const el = document.activeElement, fid = el && el.id, sel = el && el.selectionStart;
+  let html;
+  if(!S) html = loadErr ? `<div class="err">Kan de spelgegevens niet laden: ${esc(loadErr)}</div><button class="btn" data-act="retry">Opnieuw proberen</button>` : '';
+  else if(route()==='tv') html = viewTv();
+  else if(!me() || ls.get('helden_code')!==GAME_CODE) html = viewLogin();
+  else if(route()==='admin') html = viewAdmin();
+  else html = viewPlayer();
+  if(S && loadErr) html = `<div class="err">${esc(loadErr)}</div>` + html;
+  app.innerHTML = html;
+  if(fid){ const f = document.getElementById(fid); if(f){ f.focus(); try{ f.setSelectionRange(sel,sel) }catch{} } }
+}
+
+/* ============ interactie ============ */
+function arm(tag){ if(ui.arm===tag){ ui.arm=null; return true } ui.arm=tag; render(); setTimeout(()=>{ if(ui.arm===tag){ ui.arm=null; render() } },4000); return false }
+
+document.addEventListener('input', e => { if(e.target.id==='custom'){ ui.customTitle = e.target.value; render() } });
+document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='code') document.querySelector('[data-act=code]')?.click() });
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker]');
+  if(!t || t.disabled) return;
+  const d = t.dataset;
+  if(d.act) e.preventDefault();
+  if(d.act==='code'){
+    const v = (document.getElementById('code').value||'').trim().toUpperCase();
+    if(v===GAME_CODE){ ls.set('helden_code',GAME_CODE); ui.codeErr=false } else ui.codeErr=true;
+    return render(true);
+  }
+  if(d.act==='retry') return refresh();
+  if(d.act==='logout'){ ls.del('helden_me'); location.hash=''; return render(true) }
+  if(d.me){ ls.set('helden_me', d.me); return render(true) }
+  if(d.pick){
+    const k = d.pick, arr = [...(ui.picks[k]||[])], i = arr.indexOf(d.id);
+    if(i>=0) arr.splice(i,1); else arr.push(d.id);
+    if(arr.length === S.players.length-1) arr.push(S.players.find(p=>!arr.includes(p.id)).id);
+    ui.picks[k] = arr; return render();
+  }
+  if(d.clear){ ui.picks[d.clear]=[]; return render() }
+  if(d.edit){ const [qid,kind] = d.edit.split(':'); const m = myAnswer(Q(+qid),kind); if(m) ui.picks[d.edit]=[...m.picks]; ui.editing[d.edit]=true; return render() }
+  if('open' in d){ ui.openQ = d.open ? +d.open : null; window.scrollTo(0,0); return render() }
+  if(d.submit){
+    const [qid,kind] = d.submit.split(':'), q = Q(+qid);
+    if(kind==='pred' && q.kind==='pre' && !predOpen()) { loadErr='De voorspellingen zijn gesloten.'; return render(true) }
+    return act(async()=>{
+      await db.setAnswer({question_id:q.id, player_id:me(), kind, picks:ui.picks[d.submit], updated_at:stamp()});
+      ui.editing[d.submit]=false;
+      if(q.kind==='pre' && kind==='pred'){ const next = pre().find(x=>x.id!==q.id && !myAnswer(x,'pred')); ui.openQ = next ? next.id : null; window.scrollTo(0,0) }
+    });
+  }
+  if(d.reveal){
+    const q = Q(+d.reveal);
+    const truth = q.status==='voting' ? groupTruth(q) : answers(q,'vote').find(a=>a.player_id===q.ranker_id)?.picks;
+    if(!truth) return;
+    return act(()=>db.updateQ(q.id,{truth, status:'revealed', ts:stamp()}));
+  }
+  if(d.cancel){ if(!arm('c'+d.cancel)) return; const q = Q(+d.cancel);
+    return act(async()=>{ await db.delAnswers(q.id,'vote'); if(q.kind==='live') await db.delAnswers(q.id,'pred');
+      await db.updateQ(q.id,{status:'closed', ranker_id:q.kind==='live'?null:q.ranker_id, ts:null}) }) }
+  if(d.truthopen){ ui.truthFor = +d.truthopen; return render() }
+  if(d.truth){ const id = +d.truth; const truth = ui.picks['truth'+id];
+    return act(async()=>{ await db.updateQ(id,{truth, status:'revealed', ts:stamp()}); ui.truthFor=null }) }
+  if(d.vote) return act(()=>db.updateQ(+d.vote,{status:'voting', ts:stamp()}));
+  if(d.undo){ if(!arm('u'+d.undo)) return; const q = Q(+d.undo);
+    return act(async()=>{ await db.delAnswers(q.id,'vote'); if(q.kind==='live') await db.delAnswers(q.id,'pred');
+      await db.updateQ(q.id,{status:'closed', truth:null, ts:null, ranker_id:q.kind==='live'?null:q.ranker_id}) }) }
+  if(d.live){ ui.newLive = ui.newLive===+d.live ? null : +d.live; return render() }
+  if(d.ranker){ ui.newRanker = ui.newRanker===d.ranker ? null : d.ranker; return render() }
+  if(d.act==='addlive'){ const title = ui.customTitle.trim(); if(!title) return;
+    return act(async()=>{ await db.addQ({kind:'live', cat:'Eigen vragen', title, mode:'ranker'}); ui.customTitle='';
+      const s = await db.load(); ui.newLive = s.questions.filter(q=>q.title===title).pop()?.id ?? null }) }
+  if(d.act==='startlive'){
+    let r = ui.newRanker; if(r==='_random') r = S.players[Math.floor(Math.random()*S.players.length)].id;
+    const id = ui.newLive;
+    return act(async()=>{ await db.updateQ(id,{status:'open', ranker_id:r, ts:stamp()}); ui.newLive=null; ui.newRanker=null });
+  }
+});
+window.addEventListener('hashchange', ()=>{ ui.openQ=null; render(true) });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh() });
+
+/* ============ start ============ */
+(async()=>{
+  try{ db = MOCK ? mockDb() : await supaDb() }
+  catch(e){ loadErr = 'Verbinding mislukt: '+(e.message||e); return render(true) }
+  db.subscribe(soonRefresh);
+  await refresh();
+  setInterval(refresh, 4000);    // vangnet als realtime op 4G hapert
+})();
