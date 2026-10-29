@@ -77,7 +77,7 @@ async function supaDb(){
 
 /* ============ state ============ */
 let db, S = null, loadErr = null, lastSig = '';
-const ui = { picks:{}, editing:{}, openQ:null, truthFor:null, newLive:null, newRanker:null, customTitle:'', arm:null, busy:false, codeErr:false };
+const ui = { tab:null, picks:{}, editing:{}, openQ:null, truthFor:null, newLive:null, newRanker:null, customTitle:'', arm:null, busy:false, codeErr:false };
 const AS = MOCK ? params.get('as') : null;   // alleen voor testen
 if(AS) ls.set('helden_code', GAME_CODE);
 const me = () => AS || ls.get('helden_me');
@@ -238,34 +238,100 @@ function preList(){
   }).join('');
 }
 
-function viewPlayer(){
-  let html = header();
+/* ---------- tabbladen ---------- */
+const ICON = {
+  event: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="1"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M12 13.2v2.6M12 18.2h.01"/></svg>',
+  ranking: '<svg viewBox="0 0 24 24"><path d="M5 20V12M12 20V5M19 20v-5"/><path d="M3 20h18"/></svg>',
+  stand: '<svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4"/></svg>',
+  challenges: '<svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6l1-8z"/></svg>',
+  sound: '<svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+};
+const TABS = [['event','Events'],['ranking','Ranking'],['stand','Stand'],['challenges','Challenges'],['sound','Soundboard']];
+
+function needsMe(){
+  const a = active(), out = {};
+  if(predOpen() && progress(me()) < pre().length) out.event = true;
+  if(a && a.status==='voting' && !myAnswer(a,'vote')) out.event = true;
+  if(a && a.status==='open' && !myAnswer(a, a.ranker_id===me() ? 'vote' : 'pred')) out.ranking = true;
+  return out;
+}
+function defaultTab(){
   const a = active();
+  if(a) return a.kind==='pre' ? 'event' : 'ranking';
+  return predOpen() ? 'event' : 'stand';
+}
+function tabBar(cur){
+  const dot = needsMe();
+  return `<nav class="tabbar">${TABS.map(([id,label])=>
+    `<button class="tab ${id==='stand'?'mid':''} ${cur===id?'on':''}" data-tab="${id}" aria-label="${label}">
+      <span class="ic">${ICON[id]}${dot[id]?'<i class="ping"></i>':''}</span><span class="lb">${label}</span></button>`).join('')}</nav>`;
+}
+
+function tabEvent(){
+  const a = active();
+  let html = '';
   if(ui.openQ){
     const q = Q(ui.openQ);
-    if(q && q.status==='revealed') return html + `<div class="card">${resultCard(q)}<button class="btn ghost" style="margin-top:12px" data-open="">Terug</button></div>`;
-    if(q && predOpen()) return html + preEditor(q);
+    if(q && q.kind==='pre' && q.status==='revealed') return `<div class="card">${resultCard(q)}<button class="btn ghost" style="margin-top:12px" data-open="">Terug</button></div>`;
+    if(q && q.kind==='pre' && predOpen()) return preEditor(q);
     ui.openQ = null;
   }
-  if(a) html += activeCard(a);
+  if(a && a.status==='voting') html += activeCard(a);
   if(predOpen()){
     const n = progress(me()), tot = pre().length;
     html += `<div class="card center"><div class="kicker">Voorspellingen sluiten over</div><div class="cnt">${countdown()}</div>
       <p class="muted" style="margin:10px 0 0">${n===tot ? 'Alles ingevuld. Aanpassen mag tot de deadline.' : 'Zet bij elke vraag de groep op volgorde. Wat de vragen betekenen, blijkt in het weekend.'}</p>
       <div class="bar"><i style="width:${Math.round(n/tot*100)}%"></i></div><div class="kicker">${n} / ${tot} ingevuld</div></div>`;
-    if(n < tot && !a){
+    if(n < tot){
       const next = pre().find(q=>!myAnswer(q,'pred'));
       html += `<button class="btn gold" data-open="${next.id}">${n ? 'Verder invullen' : 'Begin'}</button>`;
     }
     html += `<div style="margin-top:16px">${preList()}</div>`;
   } else {
-    const last = lastRevealed();
-    if(!a) html += last ? `<div class="card">${resultCard(last)}</div><p class="center muted pulse">Wachten op de volgende onthulling…</p>`
-      : `<div class="card big-wait"><div class="kicker">De voorspellingen staan vast</div><h2 class="pulse">Wacht op de quizmaster</h2></div>`;
-    html += `<div class="card"><div class="kicker" style="margin-bottom:6px">Stand</div>${scoreboard()}</div>
-      <div class="kicker" style="margin:18px 0 8px">Vooraf-vragen</div>${preList()}`;
+    if(!a || a.status!=='voting') html += `<div class="center" style="margin:6px 0 4px"><div class="kicker">Event-vragen</div></div>
+      <p class="center muted" style="margin:0 0 14px">Je voorspellingen staan vast. Ze worden één voor één onthuld.</p>`;
+    html += preList();
   }
   return html;
+}
+
+function tabRanking(){
+  const a = active();
+  if(ui.openQ){
+    const q = Q(ui.openQ);
+    if(q && q.kind==='live' && q.status==='revealed') return `<div class="card">${resultCard(q)}<button class="btn ghost" style="margin-top:12px" data-open="">Terug</button></div>`;
+    ui.openQ = null;
+  }
+  let html = '';
+  if(a && a.status==='open') html += activeCard(a);
+  const played = live().filter(q=>q.status==='revealed').sort((x,y)=>(y.ts||'').localeCompare(x.ts||''));
+  if(!(a && a.status==='open')) html += `<div class="card big-wait"><div class="kicker">Ranking-vragen</div>
+    <h2 class="pulse">${played.length ? 'Wacht op de volgende ronde' : 'Nog geen rondes gespeeld'}</h2>
+    <p class="muted" style="margin:6px 0 0">De quizmaster start de rondes tijdens het weekend. Eén van jullie rangschikt, de rest gokt.</p></div>`;
+  if(played.length) html += `<div class="kicker" style="margin:18px 0 8px">Gespeeld</div>` + played.map(q=>
+    `<button class="qrow rev" data-open="${q.id}"><span class="t">${esc(q.title)}<small>volgens ${esc(P(q.ranker_id).name)}</small></span><span class="st">+${scoreQ(q)[me()]?.total ?? 0}</span></button>`).join('');
+  return html;
+}
+
+function tabStand(){
+  const st = standings(), last = lastRevealed();
+  const lead = st[0];
+  let html = `<div class="center" style="margin:6px 0 2px"><div class="kicker">Leaderboard</div></div>
+    <div class="card">${st.map((s,i)=>`<div class="score ${s.p.id===me()?'mine':''}"><span class="pos">${i+1}</span><span>${esc(s.p.name)}${s.p.id===me()?' <span class="tag">jij</span>':''}</span><span class="pts">${s.pts}</span></div>`).join('')}</div>`;
+  if(lead && lead.pts>0) html += `<p class="center muted" style="margin:0 0 6px">Huidige Held: <b style="color:var(--text)">${esc(lead.p.name)}</b></p>`;
+  if(last) html += `<div class="kicker" style="margin:20px 0 8px">Laatst onthuld</div><div class="card">${resultCard(last)}</div>`;
+  else html += `<p class="center muted" style="margin-top:18px">Nog niets onthuld. ${predOpen()?'Eerst voorspellen.':'De eerste onthulling komt eraan.'}</p>`;
+  return html;
+}
+
+const tabSoon = (title, text) => `<div class="card big-wait" style="margin-top:20vh"><div class="kicker">Binnenkort</div><h2>${title}</h2><p class="muted" style="margin:8px 0 0">${text}</p></div>`;
+
+function viewPlayer(){
+  const tab = ui.tab || defaultTab();
+  const body = tab==='event' ? tabEvent() : tab==='ranking' ? tabRanking() : tab==='stand' ? tabStand()
+    : tab==='challenges' ? tabSoon('Challenges','Hier komen de challenges van het weekend.')
+    : tabSoon('Soundboard','Geluiden voor de boombox. Wordt nog gebouwd.');
+  return header() + body + tabBar(tab);
 }
 
 /* ============ scherm: quizmaster ============ */
@@ -376,7 +442,7 @@ function arm(tag){ if(ui.arm===tag){ ui.arm=null; return true } ui.arm=tag; rend
 document.addEventListener('input', e => { if(e.target.id==='custom'){ ui.customTitle = e.target.value; render() } });
 document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='code') document.querySelector('[data-act=code]')?.click() });
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker]');
+  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab]');
   if(!t || t.disabled) return;
   const d = t.dataset;
   if(d.act) e.preventDefault();
@@ -388,6 +454,7 @@ document.addEventListener('click', e => {
   if(d.act==='retry') return refresh();
   if(d.act==='logout'){ ls.del('helden_me'); location.hash=''; return render(true) }
   if(d.me){ ls.set('helden_me', d.me); return render(true) }
+  if(d.tab){ ui.tab = d.tab; ui.openQ = null; window.scrollTo(0,0); return render() }
   if(d.pick){
     const k = d.pick, arr = [...(ui.picks[k]||[])], i = arr.indexOf(d.id);
     if(i>=0) arr.splice(i,1); else arr.push(d.id);
