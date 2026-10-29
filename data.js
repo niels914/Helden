@@ -52,3 +52,13 @@ export const LIVE = {
     'Wie is sinds de studie het minst veranderd?',
   ],
 };
+
+// Challenges: de quizmaster zet ze open en vult de top 3 in (3, 2 en 1 punt)
+export const CHALLENGES = [
+  'Wie heeft de meeste smaken goed geraden bij de wijnproeverij?',
+  'Wie wint karten heat 1?',
+  'Wie wint karten heat 2?',
+  'Wie wint padel?',
+  'Wie wint Memester?',
+  'Wie heeft het snelst een adje?',
+];

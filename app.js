@@ -1,4 +1,4 @@
-import { PLAYERS, PRE, LIVE } from './data.js';
+import { PLAYERS, PRE, LIVE, CHALLENGES } from './data.js';
 
 /* ============ config ============ */
 const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';
@@ -28,11 +28,12 @@ function seedQuestions(){
   let s = 100;
   for(const [cat,list] of Object.entries(LIVE)) for(const title of list)
     qs.push({id:++id, kind:'live', nr:null, cat, title, secret:null, mode:'ranker', push_at:null, status:'closed', ranker_id:null, truth:null, ts:null, sort:++s});
+  CHALLENGES.forEach((title,i)=>qs.push({id:++id, kind:'challenge', nr:i+1, cat:null, title, secret:null, mode:'challenge', push_at:null, status:'closed', ranker_id:null, truth:null, ts:null, sort:200+i}));
   return qs;
 }
 
 function mockDb(){
-  const KEY = 'helden_mock_v2', bc = 'BroadcastChannel' in window ? new BroadcastChannel('helden2') : null;
+  const KEY = 'helden_mock_v3', bc = 'BroadcastChannel' in window ? new BroadcastChannel('helden2') : null;
   let d; try{ d = JSON.parse(ls.get(KEY)) }catch{}
   if(!d) d = { players: PLAYERS.map(([id,name],i)=>({id,name,sort:i+1})), questions: seedQuestions(), answers: [], seq: 1000 };
   const subs = [];
@@ -106,7 +107,9 @@ const pre = () => S.questions.filter(q=>q.kind==='pre').sort((a,b)=>a.nr-b.nr);
 const live = () => S.questions.filter(q=>q.kind==='live');
 const answers = (q, kind) => S.answers.filter(a=>a.question_id===q.id && a.kind===kind);
 const myAnswer = (q, kind) => answers(q,kind).find(a=>a.player_id===me());
-const active = () => S.questions.find(q=>q.status==='voting' || q.status==='open');
+const active = () => S.questions.find(q=>q.kind!=='challenge' && (q.status==='voting' || q.status==='open'));
+const challenges = () => S.questions.filter(q=>q.kind==='challenge').sort((a,b)=>a.sort-b.sort);
+const CH_PTS = [3,2,1];
 const lastRevealed = () => S.questions.filter(q=>q.status==='revealed').sort((a,b)=>(b.ts||'').localeCompare(a.ts||''))[0];
 const progress = pid => pre().filter(q=>S.answers.some(a=>a.question_id===q.id && a.kind==='pred' && a.player_id===pid)).length;
 
@@ -120,6 +123,7 @@ function groupTruth(q){
 function scoreQ(q){
   const out = {};
   if(q.status!=='revealed' || !q.truth) return out;
+  if(q.kind==='challenge'){ q.truth.slice(0,3).forEach((pid,i)=>{ out[pid] = {exact:0, bonus:0, total:CH_PTS[i]} }); return out }
   for(const a of answers(q,'pred')){
     if(a.player_id === q.ranker_id) continue;
     out[a.player_id] = { exact: a.picks.filter((p,i)=>q.truth[i]===p).length, bonus:0 };
@@ -161,9 +165,14 @@ function myOrderVsTruth(picks, truth){
 }
 const scoreboard = () => standings().map((s,i)=>`<div class="score"><span class="pos">${i+1}</span><span>${esc(s.p.name)}</span><span class="pts">${s.pts}</span></div>`).join('');
 const dnr = q => pre().indexOf(q) + 1;   // doorlopende nummering (13 bestaat niet meer)
-const qLabel = q => q.kind==='pre' ? `Vraag ${dnr(q)}` : 'Live-ronde';
+const qLabel = q => q.kind==='pre' ? `Vraag ${dnr(q)}` : q.kind==='challenge' ? 'Challenge' : 'Live-ronde';
 
+function podium(q, cls='', step=0){
+  return `<ol class="order ${cls}">${q.truth.slice(0,3).map((id,i)=>`<li style="animation-delay:${((2-i)*step).toFixed(2)}s"><span class="n">${i+1}</span>${esc(P(id).name)}<span class="hit">+${CH_PTS[i]}</span></li>`).join('')}</ol>`;
+}
 function resultCard(q){
+  if(q.kind==='challenge') return `<div class="kicker">Challenge · uitslag</div><h2>${esc(q.title)}</h2>${podium(q)}
+    <p class="muted" style="margin:10px 0 0">${CH_PTS.length+1 <= S.players.length ? 'De rest: 0 punten.' : ''}${scoreQ(q)[me()] ? ` Jij: +${scoreQ(q)[me()].total}.` : ''}</p>`;
   const sc = scoreQ(q);
   const rows = Object.entries(sc).sort((a,b)=>b[1].total-a[1].total).map(([pid,o])=>
     `<div class="score"><span>${esc(P(pid).name)}${o.bonus?'<span class="tag">beste gok</span>':''}</span><span class="pts">+${o.total}</span></div>`).join('')
@@ -324,12 +333,25 @@ function tabStand(){
   return html;
 }
 
+// letters door elkaar, zodat een verborgen challenge ook onder de blur niet te lezen is
+const scramble = s => s.replace(/[A-Za-zÀ-ÿ]/g, (c,i)=>{ const p = 'aeorntslkdgmhvbwuzpij'; const ch = p[(c.charCodeAt(0)*7 + i*3) % p.length]; return c===c.toUpperCase() ? ch.toUpperCase() : ch });
+function tabChallenges(){
+  const rules = `<div class="card center"><div class="kicker">Challenges</div><h2 style="margin-top:6px">Puntentelling</h2>
+    <div class="pts3"><div><b>3</b><span>winnaar</span></div><div><b>2</b><span>tweede</span></div><div><b>1</b><span>derde</span></div><div><b>0</b><span>de rest</span></div></div>
+    <p class="muted" style="margin:10px 0 0;font-size:14px">De quizmaster zet een challenge open zodra hij aan de beurt is.</p></div>`;
+  return rules + challenges().map(q=>{
+    if(q.status==='closed') return `<div class="chal locked"><div class="kicker">Challenge ${q.nr} · nog geheim</div><div class="ct">${esc(scramble(q.title))}</div></div>`;
+    if(q.status==='open') return `<div class="chal live"><div class="kicker">Challenge ${q.nr} · loopt nu</div><div class="ct">${esc(q.title)}</div><p class="muted" style="margin:6px 0 0">Uitslag volgt.</p></div>`;
+    const mine = scoreQ(q)[me()];
+    return `<div class="chal done"><div class="kicker">Challenge ${q.nr} · uitslag${mine?` · jij +${mine.total}`:''}</div><div class="ct">${esc(q.title)}</div>${podium(q)}</div>`;
+  }).join('');
+}
 const tabSoon = (title, text) => `<div class="card big-wait" style="margin-top:20vh"><div class="kicker">Binnenkort</div><h2>${title}</h2><p class="muted" style="margin:8px 0 0">${text}</p></div>`;
 
 function viewPlayer(){
   const tab = ui.tab || defaultTab();
   const body = tab==='event' ? tabEvent() : tab==='ranking' ? tabRanking() : tab==='stand' ? tabStand()
-    : tab==='challenges' ? tabSoon('Challenges','Hier komen de challenges van het weekend.')
+    : tab==='challenges' ? tabChallenges()
     : tabSoon('Soundboard','Geluiden voor de boombox. Wordt nog gebouwd.');
   return header() + body + tabBar(tab);
 }
@@ -373,6 +395,19 @@ function viewAdmin(){
       <div class="meta">${esc(q.secret)} · ${q.mode==='gemeten'?'jij vult in':'groep stemt'} · ${st}</div>${ctl}</div>`;
   }).join('') + `</div>`;
 
+  // challenges
+  html += `<div class="card"><div class="kicker">Challenges · 3, 2 en 1 punt</div>` + challenges().map(q=>{
+    let ctl;
+    if(q.status==='closed') ctl = `<button class="btn small" data-chopen="${q.id}">Openzetten</button>`;
+    else if(q.status==='open'){
+      if(ui.truthFor===q.id){ const k='ch'+q.id, n=(ui.picks[k]||[]).length;
+        ctl = picker(k,'Tik de top 3 op volgorde: winnaar eerst.') + `<button class="btn gold" style="margin-top:10px" data-chsave="${q.id}" ${n>=3?'':'disabled'}>Uitslag opslaan</button>`; }
+      else ctl = `<div class="row"><button class="btn small" data-truthopen="${q.id}">Uitslag invullen</button><button class="btn small ghost" data-chhide="${q.id}">Weer verbergen</button></div>`;
+    } else ctl = `<button class="btn small ghost" data-undo="${q.id}">${ui.arm==='u'+q.id?'Zeker? Tik nog een keer':'Uitslag terugdraaien'}</button>`;
+    const st = q.status==='closed' ? 'verborgen' : q.status==='open' ? 'open, wacht op uitslag' : 'uitslag: ' + q.truth.slice(0,3).map(id=>P(id).name).join(', ');
+    return `<div class="adm"><div><b>${q.nr}.</b> ${esc(q.title)}</div><div class="meta">${st}</div>${ctl}</div>`;
+  }).join('') + `</div>`;
+
   // live-rondes
   const cats = [...new Set(live().map(q=>q.cat))];
   html += `<div class="card"><div class="kicker">Live-rondes</div><h2 style="margin-top:6px">1. Kies een vraag</h2>` +
@@ -405,6 +440,9 @@ function viewTv(){
     main = `<div class="kicker">Het Heldenweekend 2026</div><h1 class="tvtitle">Ranking de Helden</h1>
       <div class="kicker" style="margin-top:4vh">Voorspellingen sluiten over</div><div class="cnt">${countdown()}</div>
       <div class="tvgrid">${S.players.map(p=>`<div class="tvp ${progress(p.id)===pre().length?'in':''}">${esc(p.name)}<div class="st">${progress(p.id)} / ${pre().length}</div></div>`).join('')}</div>`;
+  } else if(last && last.kind==='challenge'){
+    main = `<div class="kicker">Challenge · de uitslag</div><h1>${esc(last.title)}</h1>${podium(last,'tvorder',1.2)}
+      <div class="winner" style="animation-delay:3.4s">Winnaar: <b>${esc(P(last.truth[0]).name)}</b> (+3)</div>`;
   } else if(last){
     const sc = scoreQ(last), n = last.truth.length;
     const best = Object.entries(sc).filter(([,o])=>o.bonus).map(([pid])=>esc(P(pid).name));
@@ -442,7 +480,7 @@ function arm(tag){ if(ui.arm===tag){ ui.arm=null; return true } ui.arm=tag; rend
 document.addEventListener('input', e => { if(e.target.id==='custom'){ ui.customTitle = e.target.value; render() } });
 document.addEventListener('keydown', e => { if(e.key==='Enter' && e.target.id==='code') document.querySelector('[data-act=code]')?.click() });
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab]');
+  const t = e.target.closest('[data-act],[data-me],[data-pick],[data-clear],[data-submit],[data-edit],[data-open],[data-reveal],[data-cancel],[data-truthopen],[data-truth],[data-vote],[data-undo],[data-live],[data-ranker],[data-tab],[data-chopen],[data-chhide],[data-chsave]');
   if(!t || t.disabled) return;
   const d = t.dataset;
   if(d.act) e.preventDefault();
@@ -485,10 +523,14 @@ document.addEventListener('click', e => {
   if(d.truthopen){ ui.truthFor = +d.truthopen; return render() }
   if(d.truth){ const id = +d.truth; const truth = ui.picks['truth'+id];
     return act(async()=>{ await db.updateQ(id,{truth, status:'revealed', ts:stamp()}); ui.truthFor=null }) }
+  if(d.chopen) return act(()=>db.updateQ(+d.chopen,{status:'open'}));
+  if(d.chhide) return act(()=>db.updateQ(+d.chhide,{status:'closed'}));
+  if(d.chsave){ const id = +d.chsave; const truth = ui.picks['ch'+id];
+    return act(async()=>{ await db.updateQ(id,{truth, status:'revealed', ts:stamp()}); ui.truthFor=null }) }
   if(d.vote) return act(()=>db.updateQ(+d.vote,{status:'voting', ts:stamp()}));
   if(d.undo){ if(!arm('u'+d.undo)) return; const q = Q(+d.undo);
     return act(async()=>{ await db.delAnswers(q.id,'vote'); if(q.kind==='live') await db.delAnswers(q.id,'pred');
-      await db.updateQ(q.id,{status:'closed', truth:null, ts:null, ranker_id:q.kind==='live'?null:q.ranker_id}) }) }
+      await db.updateQ(q.id,{status:q.kind==='challenge'?'open':'closed', truth:null, ts:null, ranker_id:q.kind==='live'?null:q.ranker_id}) }) }
   if(d.live){ ui.newLive = ui.newLive===+d.live ? null : +d.live; return render() }
   if(d.ranker){ ui.newRanker = ui.newRanker===d.ranker ? null : d.ranker; return render() }
   if(d.act==='addlive'){ const title = ui.customTitle.trim(); if(!title) return;

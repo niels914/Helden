@@ -132,3 +132,15 @@ body.tv #app{max-width:none;padding:4vh 4vw;min-height:100dvh}
 .tab.mid.on .ic{background:var(--text);color:#000;border-color:var(--text);box-shadow:0 0 26px rgba(240,236,228,.4)}
 .tab.mid.on svg{filter:none}
 .score.mine{background:rgba(240,236,228,.05)}
+/* ---------- challenges ---------- */
+.pts3{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.pts3 div{border:1px solid var(--line);border-radius:3px;padding:10px 4px}
+.pts3 b{display:block;font:700 30px "Playfair Display",Georgia,serif;text-shadow:var(--glow)}
+.pts3 span{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.chal{border:1px solid var(--line);border-radius:3px;padding:16px;margin:12px 0;background:var(--card)}
+.chal .ct{font:700 19px "Playfair Display",Georgia,serif;text-transform:uppercase;letter-spacing:.06em;line-height:1.25;margin-top:6px}
+.chal.locked .ct{filter:blur(7px);opacity:.7;user-select:none;pointer-events:none}
+.chal.locked{position:relative;overflow:hidden}
+.chal.live{border-color:rgba(240,236,228,.6);box-shadow:0 0 24px rgba(240,236,228,.1)}
+.chal.live .ct{text-shadow:var(--glow)}
+.chal.done .order{margin-top:8px}
