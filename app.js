@@ -1,4 +1,4 @@
-import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=14';
+import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=16';
 
 /* ============ config ============ */
 const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';
@@ -269,11 +269,8 @@ function needsMe(){
   if(a && a.status==='open' && !myAnswer(a, a.ranker_id===me() ? 'vote' : 'pred')) out.ranking = true;
   return out;
 }
-function defaultTab(){
-  const a = active();
-  if(a) return a.kind==='pre' ? 'event' : 'ranking';
-  return predOpen() ? 'event' : 'stand';
-}
+// bij openen of verversen altijd op de stand beginnen
+const defaultTab = () => 'stand';
 function tabBar(cur){
   const dot = needsMe();
   return `<nav class="tabbar">${TABS.map(([id,label])=>
@@ -439,14 +436,18 @@ function adminRanking(){
   else if(a) html += busyElsewhere(a,'events');
   const cats = [...new Set(live().map(q=>q.cat))];
   const played = live().filter(q=>q.status==='revealed').length;
-  html += `<div class="card"><div class="kicker">Ranking-vragen · ${played} gespeeld</div><h2 style="margin-top:6px">1. Kies een vraag</h2>` +
+  const chosen = ui.newLive ? S.questions.find(q=>q.id===ui.newLive) : null;
+  html += `<div class="card"><div class="kicker">Ranking-vragen · ${played} gespeeld</div>
+     <h2 style="margin-top:6px">1. Wie rangschikt?</h2><div class="chips">${S.players.map(p=>
+      `<button class="chip ${ui.newRanker===p.id?'on':''}" data-ranker="${p.id}">${esc(p.name)}</button>`).join('')}
+      <button class="chip ${ui.newRanker==='_random'?'on':''}" data-ranker="_random">Willekeurig</button></div>
+     <h2 style="margin-top:22px">2. Kies een vraag</h2>
+     <button class="btn small" style="margin-top:4px;width:100%" data-act="randomlive">${chosen?'Andere willekeurige vraag':'Willekeurige vraag'}</button>
+     ${chosen?`<p class="muted" style="margin:8px 0 0">Gekozen: <b>${esc(chosen.title)}</b></p>`:''}` +
     cats.map(c=>`<div class="kicker" style="margin:14px 0 8px">${esc(c)}</div><div class="chips">${live().filter(q=>q.cat===c).map(q=>
       `<button class="chip ${ui.newLive===q.id?'on':''} ${q.status==='revealed'?'done':''}" data-live="${q.id}" ${q.status!=='closed'?'disabled':''}>${esc(q.title)}</button>`).join('')}</div>`).join('') +
     `<div style="margin-top:14px"><input type="text" id="custom" placeholder="Of typ een eigen vraag" value="${esc(ui.customTitle)}"></div>
      <button class="btn small" style="margin-top:8px;width:100%" data-act="addlive" ${ui.customTitle.trim()?'':'disabled'}>Vraag toevoegen</button>
-     <h2 style="margin-top:22px">2. Wie rangschikt?</h2><div class="chips">${S.players.map(p=>
-      `<button class="chip ${ui.newRanker===p.id?'on':''}" data-ranker="${p.id}">${esc(p.name)}</button>`).join('')}
-      <button class="chip ${ui.newRanker==='_random'?'on':''}" data-ranker="_random">Willekeurig</button></div>
      <button class="btn gold" style="margin-top:16px" data-act="startlive" ${!a && ui.newLive && ui.newRanker?'':'disabled'}>${a?'Eerst lopende ronde afronden':'Zet live'}</button></div>`;
   return html;
 }
@@ -604,6 +605,10 @@ document.addEventListener('click', e => {
   if(d.act==='addlive'){ const title = ui.customTitle.trim(); if(!title) return;
     return act(async()=>{ await db.addQ({kind:'live', cat:'Eigen vragen', title, mode:'ranker'}); ui.customTitle='';
       const s = await db.load(); ui.newLive = s.questions.filter(q=>q.title===title).pop()?.id ?? null }) }
+  if(d.act==='randomlive'){
+    const pool = live().filter(q=>q.status==='closed' && q.id!==ui.newLive);
+    if(pool.length) ui.newLive = pool[Math.floor(Math.random()*pool.length)].id;
+    return render() }
   if(d.act==='startlive'){
     let r = ui.newRanker; if(r==='_random') r = S.players[Math.floor(Math.random()*S.players.length)].id;
     const id = ui.newLive;
