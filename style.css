@@ -201,3 +201,13 @@ body.tv #vapor{opacity:.8}
 .sbb.playing::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(80,200,90,.25),transparent 70%);animation:pulse 1s infinite}
 @media (max-width:340px){.sb{grid-template-columns:repeat(2,1fr)}}
 .rule{font-size:13px;margin:10px 0 0}
+
+/* ---------- dobbelstenen ---------- */
+.dicebox{display:flex;justify-content:center;gap:22px;width:100%;padding:18px 0;border:1px solid var(--line);border-radius:4px;background:rgba(0,0,0,.45);cursor:pointer;touch-action:manipulation}
+.die{width:84px;height:84px;border-radius:14px;background:#f0ece4;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:11px;gap:2px;box-shadow:0 6px 18px rgba(0,0,0,.6),inset 0 -4px 0 rgba(0,0,0,.12)}
+.die i{display:block;border-radius:50%;margin:auto;width:78%;height:78%}
+.die i.p{background:#111}
+.die .dq{grid-area:2/2;text-align:center;font:700 34px "Playfair Display",Georgia,serif;color:#111;line-height:1}
+.dicebox.rolling .die{animation:dshake .14s infinite}
+.dicebox.rolling .die:nth-child(2){animation-direction:reverse}
+@keyframes dshake{0%{transform:rotate(-8deg) translateY(0)}50%{transform:rotate(8deg) translateY(-6px)}100%{transform:rotate(-8deg) translateY(0)}}

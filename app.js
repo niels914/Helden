@@ -350,9 +350,29 @@ function tabChallenges(){
 }
 /* ---------- soundboard ---------- */
 const snd = { audio:null, id:null };
+const dice = { v:[null,null], busy:false };
+const PIPS = {1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]};
+const dieFace = (n,i) => `<div class="die" data-die="${i}">${n?[1,2,3,4,5,6,7,8,9].map(k=>`<i class="${PIPS[n].includes(k)?'p':''}"></i>`).join(''):'<span class="dq">?</span>'}</div>`;
+const diceTotal = () => dice.v[0] ? `Totaal ${dice.v[0]+dice.v[1]}${dice.v[0]===dice.v[1]?' · dubbel!':''}` : 'Tik om te gooien';
+function rollDice(){
+  if(dice.busy) return;
+  dice.busy = true;
+  const el = document.getElementById('dice'), tot = document.getElementById('dtot');
+  const r = () => 1+Math.floor(Math.random()*6);
+  const draw = () => { if(!el) return; el.querySelectorAll('.die').forEach((d,i)=>{ d.outerHTML = dieFace(dice.v[i],i) }) };
+  el?.classList.add('rolling'); let n = 0;
+  const t = setInterval(()=>{
+    dice.v = [r(),r()]; draw(); n++;
+    if(n>=11){ clearInterval(t); el?.classList.remove('rolling'); dice.busy=false; if(tot) tot.textContent = diceTotal(); try{navigator.vibrate&&navigator.vibrate(30)}catch(_){} }
+  }, 70);
+  if(tot) tot.textContent = '…';
+}
 function tabSound(){
   return `<div class="center" style="margin:6px 0 14px"><div class="kicker">Soundboard</div>
     <p class="muted" style="margin:6px 0 0;font-size:14px">Koppel je telefoon aan de boombox en tik.</p></div>
+    <div class="kicker" style="margin:18px 0 8px">Dobbelstenen</div>
+    <button class="dicebox" id="dice" data-act="roll" aria-label="Gooi de dobbelstenen">${dieFace(dice.v[0],0)}${dieFace(dice.v[1],1)}</button>
+    <div class="center muted" id="dtot" style="margin:8px 0 0;font-size:14px">${diceTotal()}</div>
     ${SOUNDS.map(([group, list])=>`<div class="kicker" style="margin:18px 0 8px">${esc(group)}</div>
       <div class="sb">${list.map(([id,label])=>`<button class="sbb ${snd.id===id?'playing':''}" data-sound="${id}"><span class="sbl">${esc(label)}</span></button>`).join('')}</div>`).join('')}`;
 }
@@ -555,6 +575,7 @@ document.addEventListener('click', e => {
     if(v===GAME_CODE){ ls.set('helden_code',GAME_CODE); ui.codeErr=false } else ui.codeErr=true;
     return render(true);
   }
+  if(d.act==='roll') return rollDice();
   if(d.act==='retry') return refresh();
   if(d.act==='logout'){ ls.del('helden_me'); location.hash=''; return render(true) }
   if(d.me){ ls.set('helden_me', d.me); return render(true) }
