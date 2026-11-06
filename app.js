@@ -1,4 +1,4 @@
-import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=16';
+import { PLAYERS, PRE, LIVE, CHALLENGES, SOUNDS } from './data.js?v=17';
 
 /* ============ config ============ */
 const SB_URL = 'https://idqayrdcgxcumoerxxvf.supabase.co';

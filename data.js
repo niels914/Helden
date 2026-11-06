@@ -70,5 +70,5 @@ export const SOUNDS = [
   ['Het weekend', [['voer','Voer'],['mis','Mis'],['sturen','Sturen'],['sapje','Sapje'],['kroeg','Kroeg'],['kater','Kater'],
                    ['zeddam','Zeddam'],['hottub','Eend'],['gadoor','Ga door'],['bal','Bal'],['gas','Gas'],['harder','Harder'],['ballen','Ballen']]],
   ['Quizmaster', [['trommel','Trommel'],['spanning','Spanning'],['onthulling','Onthulling'],['fout','Fout'],['verrassing','Verrassing'],['finale','Finale']]],
-  ['Reacties', [['proost','Proost'],['au','Au'],['applaus','Applaus'],['bedtijd','Bedtijd']]],
+  ['Reacties', [['proost','Proost'],['au','Au'],['applaus','Applaus'],['bedtijd','Bedtijd'],['plausibel','Plausibel']]],
 ];
